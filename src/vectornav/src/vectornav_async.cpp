@@ -35,121 +35,6 @@ struct UserData {
     int device_family;
 };
 
-// Method declarations for future use.
-void BinaryAsyncMessageReceived(void* userData, Packet& p, size_t index);
-
-void start_vs (uint32_t baud, string port, uint32_t sample_rate)
-{
-  // Set connection properties
-  string SensorPort = port;
-  uint32_t SensorBaudrate = baud;
-
-  //EXAMPLES:
-	//const string SensorPort = "COM1";                             // Windows format for physical and virtual (USB) serial port.
-	//const string SensorPort = "/dev/ttyS12";                    // Linux format for physical serial port.
-	// const string SensorPort = "/dev/ttyUSB0";                  // Linux format for virtual (USB) serial port.
-	// const string SensorPort = "/dev/tty.usbserial-FTXXXXXX";   // Mac OS X format for virtual (USB) serial port.
-	// const string SensorPort = "/dev/ttyS0";                    // CYGWIN format. Usually the Windows COM port number minus 1. This would connect to COM1.
-	//const uint32_t SensorBaudrate = 115200;
-
-	// Now let's create a VnSensor object and use it to connect to our sensor.
-  cout << "connecting to " << SensorPort << " @ " << SensorBaudrate << endl;
-  vs.setResponseTimeoutMs(1000); // Wait for up to 1000 ms for response
-  vs.setRetransmitDelayMs(50);  // Retransmit every 50 ms
-	vs.connect(SensorPort, SensorBaudrate);
-
-  // Set Sample Frequency in Hz
-	vs.writeAsyncDataOutputFrequency(sample_rate);
-
-  int SensorImuRate = 800;
-
-  // Configure binary output message
-  BinaryOutputRegister bor(
-          ASYNCMODE_PORT1,
-          SensorImuRate / sample_rate,  // update rate [ms]
-          COMMONGROUP_QUATERNION
-          | COMMONGROUP_ANGULARRATE
-          | COMMONGROUP_POSITION
-          | COMMONGROUP_ACCEL
-          | COMMONGROUP_MAGPRES,
-          TIMEGROUP_NONE,
-          IMUGROUP_NONE,
-          GPSGROUP_NONE,
-          ATTITUDEGROUP_YPRU, //<-- returning yaw pitch roll uncertainties
-          INSGROUP_INSSTATUS
-          | INSGROUP_POSLLA
-          | INSGROUP_POSECEF
-          | INSGROUP_VELBODY
-          | INSGROUP_ACCELECEF
-          //GPSGROUP_NONE
-          );
-
-  // OLD: Setup Binary Register for Sampling
-	//BinaryOutputRegister bor(
-	//	ASYNCMODE_PORT1,
-	//	200,
-	//	COMMONGROUP_TIMESTARTUP | COMMONGROUP_YAWPITCHROLL,	// Note use of binary OR to configure flags.
-	//	TIMEGROUP_NONE,
-	//	IMUGROUP_NONE,
-  //  GPSGROUP_NONE,
-	//	ATTITUDEGROUP_NONE,
-	//	INSGROUP_NONE,
-  //  GPSGROUP_NONE);
-
-	vs.writeBinaryOutput1(bor);
-
-  UserData user_data;
-  user_data.device_family = vs.determineDeviceFamily();
-	vs.registerAsyncPacketReceivedHandler(&user_data, BinaryAsyncMessageReceived);
-
-}
-
-void stop_vs(){
-	vs.unregisterAsyncPacketReceivedHandler();
-	vs.disconnect();
-}
-
-void* parallelLog(void*);
-
-int main(int argc, char *argv[]){
-
-  if (argc == 2) {
-    cout << "Using configuration provided by: " << argv[1] << endl;
-    YAML::Node config = YAML::LoadFile(argv[1]);
-    YAML::Node vec_config = config["vectornav"];
-    uint32_t baud = vec_config["baud"].as<int>();
-    string   port = vec_config["port"].as<string>();
-    uint32_t sample_rate = vec_config["sample_rate"].as<int>();
-    start_vs(baud, port, sample_rate);
-  } else {
-    cout << "No configuration provided, will use defaults." << endl;
-    start_vs(115200, "/dev/ttyS12", 2);
-  }
-
-  pthread_t my_thread; 
-  pthread_create(&my_thread, NULL, parallelLog, NULL);
-  sleep(10);
-  std::cout << "Threads will be stopped soon...." << std::endl;
-  pthread_cancel(my_thread); //join the thread with the main thread
-
-  stop_vs();
-  // SOME TESTFILE OUTPUT:
-  // ofstream vec_outfile;
-  // vec_outfile.open("/home/josh/vec_log.csv");
-  // vec_outfile << "Time, Yaw, Pitch, Roll" << endl;
-  // while (!vec_data.empty()) {
-  //   Imu top_vec = vec_data.top();
-  //   vec_data.pop();
-  //   vec_outfile << top_vec.t << "," <<
-  //     top_vec.y << "," <<
-  //     top_vec.p << "," <<
-  //     top_vec.r << endl;
-  // }
-  // vec_outfile.close();
-	return 0;
-}
-
-
 struct Quaternion { //vec4f
   float x;
   float y;
@@ -204,6 +89,124 @@ struct VectorNavData {
 VectorNavData vec_data;
 pthread_mutex_t vec_data_mut;
 
+bool initial_position_set = false;
+Vector3 initial_position;
+
+//Unused covariances initilized to zero's
+array<float, 9> linear_accel_covariance = { };
+array<float, 9> angular_vel_covariance = { };
+array<float, 9> orientation_covariance = { };
+
+// Method declarations for future use.
+void BinaryAsyncMessageReceived(void* userData, Packet& p, size_t index);
+void start_vs (uint32_t baud, string port, uint32_t sample_rate);
+void stop_vs();
+void* parallelLog(void*);
+
+
+int main(int argc, char *argv[]){
+
+  if (argc == 2) {
+    cout << "Using configuration provided by: " << argv[1] << endl;
+    YAML::Node config = YAML::LoadFile(argv[1]);
+    YAML::Node vec_config = config["vectornav"];
+    uint32_t baud = vec_config["baud"].as<int>();
+    string   port = vec_config["port"].as<string>();
+    uint32_t sample_rate = vec_config["sample_rate"].as<int>();
+    start_vs(baud, port, sample_rate);
+  } else {
+    cout << "No configuration provided, will use defaults." << endl;
+    start_vs(115200, "/dev/ttyS12", 2);
+  }
+
+  pthread_t my_thread; 
+  pthread_create(&my_thread, NULL, parallelLog, NULL);
+  sleep(10);
+  std::cout << "Threads will be stopped soon...." << std::endl;
+  pthread_cancel(my_thread); //join the thread with the main thread
+
+  stop_vs();
+  // SOME TESTFILE OUTPUT:
+  // ofstream vec_outfile;
+  // vec_outfile.open("/home/josh/vec_log.csv");
+  // vec_outfile << "Time, Yaw, Pitch, Roll" << endl;
+  // while (!vec_data.empty()) {
+  //   Imu top_vec = vec_data.top();
+  //   vec_data.pop();
+  //   vec_outfile << top_vec.t << "," <<
+  //     top_vec.y << "," <<
+  //     top_vec.p << "," <<
+  //     top_vec.r << endl;
+  // }
+  // vec_outfile.close();
+	return 0;
+}
+
+//
+// Start the VectorNav with the given settings
+//
+void start_vs (uint32_t baud, string port, uint32_t sample_rate)
+{
+  // Set connection properties
+  string SensorPort = port;
+  uint32_t SensorBaudrate = baud;
+
+  //EXAMPLES:
+	//const string SensorPort = "COM1";                             // Windows format for physical and virtual (USB) serial port.
+	//const string SensorPort = "/dev/ttyS12";                    // Linux format for physical serial port.
+	// const string SensorPort = "/dev/ttyUSB0";                  // Linux format for virtual (USB) serial port.
+	// const string SensorPort = "/dev/tty.usbserial-FTXXXXXX";   // Mac OS X format for virtual (USB) serial port.
+	// const string SensorPort = "/dev/ttyS0";                    // CYGWIN format. Usually the Windows COM port number minus 1. This would connect to COM1.
+	//const uint32_t SensorBaudrate = 115200;
+
+	// Now let's create a VnSensor object and use it to connect to our sensor.
+  cout << "connecting to " << SensorPort << " @ " << SensorBaudrate << endl;
+  vs.setResponseTimeoutMs(1000); // Wait for up to 1000 ms for response
+  vs.setRetransmitDelayMs(50);  // Retransmit every 50 ms
+	vs.connect(SensorPort, SensorBaudrate);
+
+  // Set Sample Frequency in Hz
+	vs.writeAsyncDataOutputFrequency(sample_rate);
+
+  int SensorImuRate = 800;
+
+  // Configure binary output message
+  BinaryOutputRegister bor(
+          ASYNCMODE_PORT1,
+          SensorImuRate / sample_rate,  // update rate [ms]
+          COMMONGROUP_QUATERNION
+          | COMMONGROUP_ANGULARRATE
+          | COMMONGROUP_POSITION
+          | COMMONGROUP_ACCEL
+          | COMMONGROUP_MAGPRES,
+          TIMEGROUP_NONE,
+          IMUGROUP_NONE,
+          GPSGROUP_NONE,
+          ATTITUDEGROUP_YPRU, //<-- returning yaw pitch roll uncertainties
+          INSGROUP_INSSTATUS
+          | INSGROUP_POSLLA
+          | INSGROUP_POSECEF
+          | INSGROUP_VELBODY
+          | INSGROUP_ACCELECEF
+          );
+
+
+	vs.writeBinaryOutput1(bor);
+
+  UserData user_data;
+  user_data.device_family = vs.determineDeviceFamily();
+	vs.registerAsyncPacketReceivedHandler(&user_data, BinaryAsyncMessageReceived);
+
+}
+
+//
+// Stop the Vectornav with the given settings
+//
+void stop_vs(){
+	vs.unregisterAsyncPacketReceivedHandler();
+	vs.disconnect();
+}
+
 void* parallelLog(void*){
   while(true){
     // sample at 1Hz for the time being
@@ -245,13 +248,6 @@ void* parallelLog(void*){
   }
 }
 
-bool initial_position_set = false;
-Vector3 initial_position;
-
-//Unused covariances initilized to zero's
-array<float, 9> linear_accel_covariance = { };
-array<float, 9> angular_vel_covariance = { };
-array<float, 9> orientation_covariance = { };
 
 //
 // Callback function to process data packet from sensor
@@ -398,44 +394,3 @@ void BinaryAsyncMessageReceived(void* userData, Packet& p, size_t index)
         pthread_mutex_unlock(&vec_data_mut);
     }
 }
-
-/* OLD
-void asciiOrBinaryAsyncMessageReceived(void* userData, Packet& p, size_t index)
-{
-  auto now = chrono::high_resolution_clock::now();
-  auto msg_time_ms = chrono::duration_cast<chrono::milliseconds>(now.time_since_epoch()).count();
-	if (p.type() == Packet::TYPE_ASCII && p.determineAsciiAsyncType() == VNYPR)
-	{
-		vec3f ypr;
-		p.parseVNYPR(&ypr);
-    current_vector.t = msg_time_ms;
-    current_vector.y = ypr[0];
-    current_vector.p = ypr[1];
-    current_vector.r = ypr[2];
-		// cout << "ASCII Async YPR: " << ypr << endl;
-		return;
-	} else if (p.type() == Packet::TYPE_BINARY) {
-		// First make sure we have a binary packet type we expect since there
-		// are many types of binary output types that can be configured.
-		if (!p.isCompatible(
-			COMMONGROUP_TIMESTARTUP | COMMONGROUP_YAWPITCHROLL,
-			TIMEGROUP_NONE,
-			IMUGROUP_NONE,
-      GPSGROUP_NONE,
-			ATTITUDEGROUP_NONE,
-			INSGROUP_NONE,
-      GPSGROUP_NONE))
-      // Not the type of binary packet we are expecting.
-			return;
-		// uint64_t timeStartup = p.extractUint64();
-		vec3f ypr = p.extractVec3f();
-    current_vector.t = msg_time_ms;
-    current_vector.y = ypr[0];
-    current_vector.p = ypr[1];
-    current_vector.r = ypr[2];
-
-	}
-  // Debug out for IMU data
-  cout << current_vector.t << "," << current_vector.y << "," << current_vector.p << "," << current_vector.r;
-}
-*/
