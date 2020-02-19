@@ -2,7 +2,7 @@
 
 #include "dllvalidator.h"
 
-#include <Windows.h>
+#include <windows.h>
 
 void dumpImportDirectory32(PeLib::PeFile32& pef, std::vector<std::string>& dllNamesOut)
 {

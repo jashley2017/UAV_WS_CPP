@@ -1,7 +1,7 @@
 #include "vn/serialport.h"
 
 #if _WIN32
-	#include <Windows.h>
+	#include <windows.h>
 	#include <tchar.h>
 	#include <setupapi.h>
 	#include <devguid.h>

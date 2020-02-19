@@ -1,7 +1,7 @@
 #include "vn/vntime.h"
 
 #if _WIN32
-	#include <Windows.h>
+	#include <windows.h>
 #elif __linux__ || __CYGWIN__ || __QNXNTO__
 	#include <time.h>
 	#include <sys/time.h>

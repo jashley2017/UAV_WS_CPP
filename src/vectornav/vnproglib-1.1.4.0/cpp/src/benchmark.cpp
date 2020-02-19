@@ -1,5 +1,5 @@
 #ifdef _win32
-#include <Windows.h>
+#include <windows.h>
 #include <tchar.h>
 
 #endif

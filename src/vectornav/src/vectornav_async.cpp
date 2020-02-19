@@ -2,9 +2,11 @@
 #include <fstream>
 #include <stack>
 #include <chrono>
-#include <thread>
-#include <future>
-#include <mutex>
+// #include <thread>
+// #include <future>
+// #include <mutex>
+#include <pthread.h>
+#include <unistd.h>
 
 // Include this header file to get access to VectorNav sensors.
 #include "vn/sensors.h"
@@ -103,7 +105,7 @@ void stop_vs(){
 	vs.disconnect();
 }
 
-void parallelLog(std::future<void> fut);
+void* parallelLog(void*);
 
 int main(int argc, char *argv[]){
 
@@ -120,13 +122,12 @@ int main(int argc, char *argv[]){
     start_vs(115200, "/dev/ttyS12", 2);
   }
 
-  std::promise<void> signal_exit; //create promise object
-  std::future<void> fut = signal_exit.get_future();//create future objects
-  std::thread my_thread(&parallelLog, std::move(fut)); //start thread, and move future
-  std::this_thread::sleep_for(std::chrono::seconds(10)); //wait for 7 seconds
+  pthread_t my_thread; 
+  pthread_create(&my_thread, NULL, parallelLog, NULL);
+  sleep(10);
   std::cout << "Threads will be stopped soon...." << std::endl;
-  signal_exit.set_value(); //set value into promise
-  my_thread.join(); //join the thread with the main thread
+  pthread_cancel(my_thread); //join the thread with the main thread
+
   stop_vs();
   // SOME TESTFILE OUTPUT:
   // ofstream vec_outfile;
@@ -197,13 +198,13 @@ struct VectorNavData {
 };
 
 VectorNavData vec_data;
-std::mutex vec_data_mut;
+pthread_mutex_t vec_data_mut;
 
-void parallelLog(std::future<void> fut){
-  while(fut.wait_for(std::chrono::milliseconds(1)) == std::future_status::timeout){
+void* parallelLog(void*){
+  while(true){
     // sample at 1Hz for the time being
-    std::this_thread::sleep_for(std::chrono::seconds(1));
-    vec_data_mut.lock();
+    sleep(1);
+    pthread_mutex_lock(&vec_data_mut);
     // TODO: need to include covariance
     cout <<
     //   vec_data.imu.orientation.x << "," <<
@@ -236,7 +237,7 @@ void parallelLog(std::future<void> fut){
     //   vec_data.odom.orientation.z <<"," <<
     vec_data.temp.temperature << "," <<
     vec_data.barom.fluid_pressure << endl;
-    vec_data_mut.unlock();
+    pthread_mutex_unlock(&vec_data_mut);
   }
 }
 
@@ -291,9 +292,9 @@ void BinaryAsyncMessageReceived(void* userData, Packet& p, size_t index)
 
         imu_msg.angular_velocity_covariance = angular_vel_covariance;
         imu_msg.linear_acceleration_covariance = linear_accel_covariance;
-        vec_data_mut.lock();
+        pthread_mutex_lock(&vec_data_mut);
         vec_data.imu = imu_msg;
-        vec_data_mut.unlock();
+        pthread_mutex_unlock(&vec_data_mut);
     }
 
     // Magnetic Field
@@ -304,9 +305,9 @@ void BinaryAsyncMessageReceived(void* userData, Packet& p, size_t index)
         magnet_msg.magnetic_field.x = mag[0];
         magnet_msg.magnetic_field.y = mag[1];
         magnet_msg.magnetic_field.z = mag[2];
-        vec_data_mut.lock();
+        pthread_mutex_lock(&vec_data_mut);
         vec_data.mag = magnet_msg;
-        vec_data_mut.unlock();
+        pthread_mutex_unlock(&vec_data_mut);
     }
 
     // GPS
@@ -319,9 +320,9 @@ void BinaryAsyncMessageReceived(void* userData, Packet& p, size_t index)
         gps_msg.longitude = lla[1];
         gps_msg.altitude = lla[2];
 
-        vec_data_mut.lock();
+        pthread_mutex_lock(&vec_data_mut);
         vec_data.gps = gps_msg;
-        vec_data_mut.unlock();
+        pthread_mutex_unlock( &vec_data_mut );
 
         // Odometry
         Odometry odom_msg;
@@ -364,9 +365,9 @@ void BinaryAsyncMessageReceived(void* userData, Packet& p, size_t index)
             odom_msg.twist_angular.y = ar[1];
             odom_msg.twist_angular.z = ar[2];
         }
-        vec_data_mut.lock();
+        pthread_mutex_lock(&vec_data_mut);
         vec_data.odom = odom_msg;
-        vec_data_mut.unlock();
+        pthread_mutex_unlock(&vec_data_mut);
     }
 
     // Temperature
@@ -376,9 +377,9 @@ void BinaryAsyncMessageReceived(void* userData, Packet& p, size_t index)
 
         Temperature temp_msg;
         temp_msg.temperature = temp;
-        vec_data_mut.lock();
+        pthread_mutex_lock(&vec_data_mut);
         vec_data.temp = temp_msg;
-        vec_data_mut.unlock();
+        pthread_mutex_unlock(&vec_data_mut);
     }
 
     // Barometer
@@ -388,9 +389,9 @@ void BinaryAsyncMessageReceived(void* userData, Packet& p, size_t index)
 
         FluidPressure pres_msg;
         pres_msg.fluid_pressure = pres;
-        vec_data_mut.lock();
+        pthread_mutex_lock(&vec_data_mut);
         vec_data.barom = pres_msg;
-        vec_data_mut.unlock();
+        pthread_mutex_unlock(&vec_data_mut);
     }
 }
 
