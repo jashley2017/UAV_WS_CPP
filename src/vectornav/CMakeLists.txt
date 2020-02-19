@@ -14,7 +14,11 @@ add_executable(vn_uav src/vectornav_async.cpp)
 target_link_libraries(vn_uav
   libvncxx
   yaml-cpp
+)
+if(BUILD_WS)
+target_link_libraries(vn_uav
   setupapi
 )
+endif(BUILD_WS)
 
 install(TARGETS vn_uav DESTINATION ../../bin)
