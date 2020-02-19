@@ -1,7 +1,7 @@
 #include "vn/criticalsection.h"
 
 #if _WIN32
-	#include <Windows.h>
+	#include <windows.h>
 #elif __linux__ || __APPLE__ || __CYGWIN__ || __QNXNTO__
 	#include <pthread.h>
 #else
