@@ -23,7 +23,11 @@ using namespace vn::sensors;
 using namespace vn::protocol::uart;
 using namespace vn::xplat;
 
-float M_PI = 3.14159;
+#if _WIN32
+
+#define M_PI 3.14159;
+
+#endif
 
 // Holds that binary data messages for output once program is terminated.
 VnSensor vs;
