@@ -25,7 +25,7 @@ using namespace vn::xplat;
 
 #if _WIN32
 
-#define M_PI 3.14159;
+float M_PI=3.14159;
 
 #endif
 
