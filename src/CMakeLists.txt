@@ -28,4 +28,26 @@ if(BUILD_WS)
 endif(BUILD_WS)
 
 project(uav)
-add_subdirectory(vectornav)
+
+add_compile_options(-std=c++11 -g)
+
+add_subdirectory(vnproglib-1.1.4.0/cpp)
+add_subdirectory(yaml-cpp)
+
+file(GLOB SRC_FILES *.cpp)
+
+add_executable(uav_launch ${SRC_FILES})
+
+include_directories(vnproglib-1.1.4.0/cpp/include yaml-cpp/include)
+
+target_link_libraries(uav_launch 
+  yaml-cpp
+  libvncxx
+)
+if(BUILD_WS)
+target_link_libraries(uav_launch
+  setupapi
+)
+endif(BUILD_WS)
+
+install(TARGETS uav_launch DESTINATION ../../bin)
