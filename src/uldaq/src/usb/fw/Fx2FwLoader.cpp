@@ -46,10 +46,12 @@ void Fx2FwLoader::prepareHardware()
 	libusb_device** devs;
 	libusb_device* dev;
 	libusb_device_handle* 	devHandle;
+  libusb_context *ctx = NULL;
+  int r = libusb_init(&ctx);
 	int ret = 0;
 	bool fwloaded = false;
 
-	int numDevs = libusb_get_device_list (NULL, &devs);
+	int numDevs = libusb_get_device_list (ctx, &devs);
 
 	if(numDevs > 0)
 	{

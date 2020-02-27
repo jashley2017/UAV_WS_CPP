@@ -1,8 +1,8 @@
 vectornav: 
   baud: 115200
-  port: "/dev/ttyS12" # COM12
+  port: "/dev/ttyS16" # COM12
   sample_rate: 2
 dac:
-  channel_count: 4
+  channel_count: 8
   sample_rate: 20000 # 20kHz
 outfile: "~/share/uav_run.csv"
