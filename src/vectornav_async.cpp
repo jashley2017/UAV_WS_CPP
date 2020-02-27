@@ -165,9 +165,9 @@ namespace vnuav {
 
           imu_msg.angular_velocity_covariance = angular_vel_covariance;
           imu_msg.linear_acceleration_covariance = linear_accel_covariance;
-          pthread_mutex_lock(&vec_data_mut);
+          lock_vec_data();
           vec_data.imu = imu_msg;
-          pthread_mutex_unlock(&vec_data_mut);
+          unlock_vec_data();
       }
 
       // Magnetic Field
@@ -178,9 +178,9 @@ namespace vnuav {
           magnet_msg.magnetic_field.x = mag[0];
           magnet_msg.magnetic_field.y = mag[1];
           magnet_msg.magnetic_field.z = mag[2];
-          pthread_mutex_lock(&vec_data_mut);
+          lock_vec_data();
           vec_data.mag = magnet_msg;
-          pthread_mutex_unlock(&vec_data_mut);
+          unlock_vec_data();
       }
 
       // GPS
@@ -193,7 +193,7 @@ namespace vnuav {
           gps_msg.longitude = lla[1];
           gps_msg.altitude = lla[2];
 
-          pthread_mutex_lock(&vec_data_mut);
+          lock_vec_data();
           vec_data.gps = gps_msg;
           pthread_mutex_unlock( &vec_data_mut );
 
@@ -238,9 +238,9 @@ namespace vnuav {
               odom_msg.twist_angular.y = ar[1];
               odom_msg.twist_angular.z = ar[2];
           }
-          pthread_mutex_lock(&vec_data_mut);
+          lock_vec_data();
           vec_data.odom = odom_msg;
-          pthread_mutex_unlock(&vec_data_mut);
+          unlock_vec_data();
       }
 
       // Temperature
@@ -250,9 +250,9 @@ namespace vnuav {
 
           Temperature temp_msg;
           temp_msg.temperature = temp;
-          pthread_mutex_lock(&vec_data_mut);
+          lock_vec_data();
           vec_data.temp = temp_msg;
-          pthread_mutex_unlock(&vec_data_mut);
+          unlock_vec_data();
       }
 
       // Barometer
@@ -262,9 +262,9 @@ namespace vnuav {
 
           FluidPressure pres_msg;
           pres_msg.fluid_pressure = pres;
-          pthread_mutex_lock(&vec_data_mut);
+          lock_vec_data();
           vec_data.barom = pres_msg;
-          pthread_mutex_unlock(&vec_data_mut);
+          unlock_vec_data();
       }
   }
 }
