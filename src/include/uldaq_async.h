@@ -18,7 +18,7 @@ namespace daquav {
   //
   void unlock_adc();
 
-  float* get_results(size_t&);
+  double* get_results(size_t&);
 
   //
   // Polls DAQ at given sample rate
@@ -28,7 +28,7 @@ namespace daquav {
   //
   // Initialize DAQ handler and start the poller
   //
-  void start_daq(int, int);
+  void start_daq(int, double);
 
   //
   // Close connection and stop polling DAQ
