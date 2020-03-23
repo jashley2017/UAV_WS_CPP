@@ -2,32 +2,35 @@
 #include "include/uldaq_async.h"
 #include "yaml-cpp/yaml.h"
 #include <pthread.h>
+#include <sched.h>
 #include <unistd.h>
 #include <chrono>
 #include <iostream>
 #include <fstream>
 #include <string>
 #include <sstream>
-
+#include <time.h>
 
 using namespace std;
 
 void* parallelLog(void*);
 void log_vec_data(stringstream& curr_file);
 void log_adc_data(stringstream& curr_file);
-
-bool log_run;
+long long minimum_period_in_nanoseconds(uint32_t rate_array[], int size);
 
 auto start_time = chrono::high_resolution_clock::now();
+long long min_per = 100000; // 100 us 
 
 int main(int argc, char *argv[]){
 
+  // Set initial/default values for each param expected
   uint32_t vec_baud = 115200; 
   string   vec_port = "/dev/ttyS12"; 
   uint32_t vec_rate = 2;
 
   double dac_rate = 1.2345; 
-  uint32_t dac_chans = 1;
+  uint32_t low_chan = 1;
+  uint32_t high_chan = 1;
 
   string csv_filename;
 
@@ -43,7 +46,8 @@ int main(int argc, char *argv[]){
 
     // DAC config
     YAML::Node dac_config = config["dac"];
-    dac_chans = dac_config["channel_count"].as<int>();
+    low_chan = dac_config["low_chan"].as<int>();
+    high_chan = dac_config["high_chan"].as<int>();
     dac_rate = dac_config["sample_rate"].as<double>();
 
     //outfile 
@@ -56,11 +60,21 @@ int main(int argc, char *argv[]){
 
   // Start Sensors
   vnuav::start_vs(vec_baud, vec_port, vec_rate);
-  daquav::start_daq(dac_chans, dac_rate);
+  daquav::start_daq(low_chan, high_chan, dac_rate);
+
+  // Start Logging Thread
+  uint32_t sample_rates[2]= {vec_rate, dac_rate};
+  min_per = minimum_period_in_nanoseconds(sample_rates, 2);
 
   pthread_t my_thread; 
-  log_run = true;
   pthread_create(&my_thread, NULL, parallelLog, static_cast<void*>(&csv_filename));
+
+  // TODO: parallelLog is getting slept by some other thread and causing increased delay
+  //        when it is set to max prio, the delay is what is expected
+  struct sched_param thread_prio;
+  thread_prio.sched_priority = sched_get_priority_max(SCHED_FIFO);
+  int ret = pthread_setschedparam(my_thread, SCHED_FIFO, &thread_prio);
+
   pthread_join(my_thread, NULL); //join the thread with the main thread
   std::cout << "Threads will be stopped soon...." << std::endl;
 
@@ -71,9 +85,22 @@ int main(int argc, char *argv[]){
   return 0;
 }
 
+// returns the minimum log period neccesary to capture all sample rates.
+// Assumes sample rates are in units of Hz
+long long minimum_period_in_nanoseconds(uint32_t rate_array[], int size){
+  int max_rate = 0;
+  for(int i=0; i<size; i++){
+    if (rate_array[i] > max_rate) {
+      max_rate = rate_array[i];
+    }
+  }
+  long long period_ns = (double)(1/max_rate)*1000000000L;
+  return period_ns;
+}
+
 void* parallelLog(void* filename) {
 
-  long log_rotate = 2000000;
+  long log_rotate = 20000;
   long line_count = 0;
   int file_count = 0;
   // This part is difficulty of passing a string as a pointer. Please ignore
@@ -82,15 +109,19 @@ void* parallelLog(void* filename) {
   ofstream curr_file; 
   curr_file.open(full_file.str());
   
+  // TODO: replace with constants
   curr_file << "Time,OdomX,OdomY,OdomZ,Temp,Pressure,DAC1,DAC2,DAC3,DAC4,DAC4,DAC5,DAC6,DAC7,DAC8\n";
-
   stringstream buffer_str;
 
-  while(file_count < 4){ // TODO: replace with proper thread handler
-    // TODO: we should handle sleep dynamically based on time of most recent sample taken and sample rate
-    usleep(20);
+  // TODO: we should handle sleep dynamically based on time of most recent sample taken and sample rate
+  struct timespec sample_period = {0};
+  sample_period.tv_sec = 0;
+  sample_period.tv_nsec = min_per;
+  
+  while(file_count < 4) { // TODO: replace with proper thread handler
+    nanosleep(&sample_period, (struct timespec *)NULL);
     auto curr_time = chrono::high_resolution_clock::now();
-    long long time_now = chrono::duration_cast<chrono::milliseconds>(curr_time - start_time).count();
+    long long time_now = chrono::duration_cast<chrono::microseconds>(curr_time - start_time).count();
     buffer_str << time_now << ",";
     log_vec_data(buffer_str);
     buffer_str << ",";
@@ -106,7 +137,7 @@ void* parallelLog(void* filename) {
       full_file.str("");
       full_file << *(static_cast<string*>(filename)) << file_count << ".csv";
       curr_file.open(full_file.str());
-      curr_file << "OdomX,OdomY,OdomZ,Temp,Pressure,DAC1,DAC2,DAC3,DAC4,DAC4,DAC5,DAC6,DAC7,DAC8\n";
+      curr_file << "Time,OdomX,OdomY,OdomZ,Temp,Pressure,DAC1,DAC2,DAC3,DAC4,DAC4,DAC5,DAC6,DAC7,DAC8\n";
     }
   }
   curr_file.close();
@@ -120,7 +151,6 @@ void log_adc_data(stringstream& curr_file) {
     for(int i=1; i < size; i++){ 
       curr_file << "," << adc_res[i];
     }
-    delete adc_res;
 }
 
 void log_vec_data(stringstream& curr_file) {

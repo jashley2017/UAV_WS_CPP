@@ -3,6 +3,7 @@ vectornav:
   port: "/dev/ttyUSB0"
   sample_rate: 40
 dac:
-  channel_count: 8
+  low_chan: 0
+  high_chan: 7
   sample_rate: 20000 # 20kHz
-outfile: "/media/usb2/uav_run"
+outfile: "/home/josh/Projects/UAV/logs/uav_run"

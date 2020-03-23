@@ -12,67 +12,66 @@
 
 using namespace std;
 
-namespace daquav { 
-
-  // configuration variables for the DAQ
-  unsigned int numDevs = MAX_DEV_COUNT;
-  DaqDeviceDescriptor devDescriptors[MAX_DEV_COUNT];
-  DaqDeviceInterface interfaceType = ANY_IFC;
-  DaqDeviceHandle daqDeviceHandle = 0;
-  UlError err = ERR_NO_ERROR;
-  ScanStatus status;
-  TransferStatus transferStatus;
-
-  // input settings for the DAQ
-  int channel_nums;
-  int sample_rate;
-  int sample_period; // period in microseconds
-
-  // output results for each channel
-
-  // thread handlers
-  pthread_t daq_poll_thread;
-  pthread_mutex_t adc_res_mut;
-
-  double* buffer = NULL;
-
-  double* get_results(size_t& size) {
-    size = channel_nums;
-    err = ulAInScanStatus(daqDeviceHandle, &status, &transferStatus);
-    double* adc_results = new double[size];
-    for (int i = 0; i < channel_nums; i++) {
-      adc_results[i] = buffer[i]; 
-    }
-    return adc_results;
-  }
+namespace daquav {
 
 
-  //
-  // Initialize DAQ handler and start the poller
-  //
-  void start_daq(int chan_nums, double rate) { 
+struct ScanEventParameters
+{
+	double* buffer;	// data buffer
+	int bufferSize;	// data buffer size
+	int lowChan;	// first channel in acquisition
+	int highChan;	// last channel in acquisition
+	double rate;
+};
+typedef struct ScanEventParameters ScanEventParameters;
+
+double* buffer = NULL;
+DaqDeviceHandle daqDeviceHandle = 0;
+DaqEventType eventTypes = (DaqEventType) (DE_ON_DATA_AVAILABLE | DE_ON_INPUT_SCAN_ERROR | DE_ON_END_OF_INPUT_SCAN);
+
+void start_daq(int low_chan, int high_chan, double in_rate)
+{
 	int descriptorIndex = 0;
+	DaqDeviceDescriptor devDescriptors[MAX_DEV_COUNT];
+	DaqDeviceInterface interfaceType = ANY_IFC;
 	unsigned int numDevs = MAX_DEV_COUNT;
+	ScanEventParameters scanEventParameters;
 
 	// set some variables that are used to acquire data
-	channel_nums = chan_nums - 1; // zero index
+	int lowChan = low_chan;
+	int highChan = high_chan;
 	AiInputMode inputMode;
 	Range range;
 	int samplesPerChannel = 1;
-	double sample_rate = rate;
-	ScanOption scanOptions = (ScanOption) (SO_DEFAULTIO | SO_CONTINUOUS);
+	double rate = in_rate;
 	AInScanFlag flags = AINSCAN_FF_DEFAULT;
 
-	int daq_supported_channels = 0;
-	int index = 0;
+	// set the scan options for a FINITE scan ... to set the scan options for
+	// a continuous scan, uncomment the line that or's the SO_CONTINUOUS option
+	// into to the scanOptions variable
+	//
+	// if this is changed to a CONTINUOUS scan, then changes will need to be made
+	// to the event handler (eventCallbackFunction) to account for the buffer wrap
+	// around condition
+	ScanOption scanOptions = SO_DEFAULTIO;
+	scanOptions = (ScanOption) (scanOptions | SO_CONTINUOUS);
+
+	int hasAI = 0;
+	int hasPacer = 0;
+	int numberOfChannels = 0;
+	int availableSampleCount = 0;
 
 	char inputModeStr[MAX_STR_LENGTH];
 	char rangeStr[MAX_STR_LENGTH];
 	char scanOptionsStr[MAX_SCAN_OPTIONS_LENGTH];
 
+	// allocate a buffer to receive the data
 	int chanCount = 0;
+	int bufferSize;
+	UlError err = ERR_NO_ERROR;
 
 	int i = 0;
+	int __attribute__((unused)) ret;
 	char c;
 
 	// Get descriptors for all of the available DAQ devices
@@ -80,21 +79,19 @@ namespace daquav {
 
 	if (err != ERR_NO_ERROR) {
 		stop_daq();
-		return;
-	}
+  }
 
 	// verify at least one DAQ device is detected
 	if (numDevs == 0)
 	{
 		printf("No DAQ device is detected\n");
 		stop_daq();
-		return;
 	}
 
 	printf("Found %d DAQ device(s)\n", numDevs);
 	for (i = 0; i < (int) numDevs; i++) {
 		printf("  %s: (%s)\n", devDescriptors[i].productName, devDescriptors[i].uniqueId);
-	}
+  }
 
 	// get a handle to the DAQ device associated with the first descriptor
 	daqDeviceHandle = ulCreateDaqDevice(devDescriptors[descriptorIndex]);
@@ -103,7 +100,23 @@ namespace daquav {
 	{
 		printf ("\nUnable to create a handle to the specified DAQ device\n");
 		stop_daq();
-		return;
+	}
+
+	// verify the specified DAQ device supports analog input
+	err = getDevInfoHasAi(daqDeviceHandle, &hasAI);
+	if (!hasAI)
+	{
+		printf("\nThe specified DAQ device does not support analog input\n");
+		stop_daq();
+	}
+
+	// verify the device supports hardware pacing for analog input
+	err = getAiInfoHasPacer(daqDeviceHandle, &hasPacer);
+
+	if (!hasPacer)
+	{
+		printf("The specified DAQ device does not support hardware paced analog input\n");
+		stop_daq();
 	}
 
 	printf("\nConnecting to device %s - please wait ...\n", devDescriptors[descriptorIndex].devString);
@@ -113,55 +126,77 @@ namespace daquav {
 
 	if (err != ERR_NO_ERROR) {
 		stop_daq();
-		return;
-	}
+  }
 
+	// get the first supported analog input mode
+	err = getAiInfoFirstSupportedInputMode(daqDeviceHandle, &numberOfChannels, &inputMode, inputModeStr);
+
+	if (highChan >= numberOfChannels) {
+		highChan = numberOfChannels - 1;
+  }
+
+	chanCount = highChan - lowChan + 1;
 
 	// allocate a buffer to receive the data
-	buffer = new double[channel_nums*samplesPerChannel];
+	bufferSize = chanCount * samplesPerChannel;
+	buffer = (double*) malloc(bufferSize * sizeof(double));
 
 	if(buffer == NULL)
 	{
 		printf("\nOut of memory, unable to create scan buffer\n");
 		stop_daq();
-		return;
 	}
 
-	// get the first supported analog input mode
-	int max_chans = 0;
-	err = getAiInfoFirstSupportedInputMode(daqDeviceHandle, &max_chans, &inputMode, inputModeStr);
+	// store the scan event parameters for use in the callback function
+	scanEventParameters.buffer =  buffer;
+	scanEventParameters.bufferSize =  bufferSize;
+	scanEventParameters.lowChan = lowChan;
+	scanEventParameters.highChan = highChan;
+
+	// enable the event to be notified every time 100 samples are available
+	availableSampleCount = 100;
+	err = ulEnableEvent(daqDeviceHandle, eventTypes, availableSampleCount, eventCallbackFunction, &scanEventParameters);
+
 	// get the first supported analog input range
 	err = getAiInfoFirstSupportedRange(daqDeviceHandle, inputMode, &range, rangeStr);
 
-	// start the acquisition of 0 - chan_nums
-	err = ulAInScan(daqDeviceHandle, 0, channel_nums, inputMode, range, samplesPerChannel, &sample_rate, scanOptions, flags, buffer);
+	ConvertScanOptionsToString(scanOptions, scanOptionsStr);
 
-	// get the initial status of the acquisition
-	err = ulAInScanStatus(daqDeviceHandle, &status, &transferStatus);
+	// start the finite acquisition
+	err = ulAInScan(daqDeviceHandle, lowChan, highChan, inputMode, range, samplesPerChannel, &rate, scanOptions, flags, buffer);
+
+	scanEventParameters.rate = rate;
+
+}
 
 
-  }
 
-  //
-  // Close connection and stop polling DAQ
-  //
-  void stop_daq() {
-	// stop the acquisition if it is still running
-	if (status == SS_RUNNING && err == ERR_NO_ERROR)
-	{
-		err = ulAInScanStop(daqDeviceHandle);
-	}
+
+size_t buff_size; 
+long long index = 0;
+double* get_results(size_t& size) {
+  size = buff_size;
+  return buffer+index;
+}
+
+void stop_daq() {
+	UlError err = ERR_NO_ERROR;
+  err = ulAInScanStop(daqDeviceHandle);
+
+	// disable events
+	ulDisableEvent(daqDeviceHandle, eventTypes);
+
 	// disconnect from the DAQ device
 	ulDisconnectDaqDevice(daqDeviceHandle);
-
 
 	// release the handle to the DAQ device
 	if(daqDeviceHandle)
 		ulReleaseDaqDevice(daqDeviceHandle);
 
 	// release the scan buffer
-	if(buffer)
+	if(buffer) {
 		free(buffer);
+  }
 
 	if(err != ERR_NO_ERROR)
 	{
@@ -170,76 +205,56 @@ namespace daquav {
 		printf("Error Code: %d \n", err);
 		printf("Error Message: %s \n", errMsg);
 	}
-  }
-
-  /*
-  //
-  // Initialize DAQ handler and start the poller
-  //
-  void start_daq(int chan_nums, double rate) { 
-    
-    channel_nums = chan_nums;
-    sample_rate = rate;
-    sample_period = 1000000L/rate; 
-    adc_results = new float[chan_nums];
-
-    // Get descriptors for all of the available DAQ devices
-    ulGetDaqDeviceInventory(ANY_IFC, devDescriptors, &numDevs);
-
-    // verify at least one DAQ device is detected
-    if (numDevs)
-    {
-      // get a handle to the DAQ device associated with the first descriptor
-      handle = ulCreateDaqDevice(devDescriptors[0]);
-
-      // check if the DAQ device handle is valid
-      if (handle)
-      {
-        // establish a connection to the DAQ device
-        err = ulConnectDaqDevice(handle);
-        pthread_create(&daq_poll_thread, NULL, daq_poller, NULL);
-      }
-    }
-  }
-  */
-
-  /*
-  //
-  // Locks mutex for adc data control
-  //
-  void lock_adc() {
-    pthread_mutex_lock(&adc_res_mut);
-  }
-
-  //
-  // Unlocks mutex for adc data control
-  //
-  void unlock_adc() {
-    pthread_mutex_unlock(&adc_res_mut);
-  }
+}
 
 
-  //
-  // Polls DAQ at given sample rate
-  //
-  void* daq_poller(void*) { 
-    double data = 0;
-    float *adc_results_tmp = new float[channel_nums];
+/*
+ * Event handler for when data is ready from the samples
+ */
+void eventCallbackFunction(DaqDeviceHandle daqDeviceHandle, DaqEventType eventType, unsigned long long eventData, void* userData)
+{
+	char eventTypeStr[MAX_STR_LENGTH];
+	UlError err = ERR_NO_ERROR;
+	DaqDeviceDescriptor activeDevDescriptor;
+	int i;
 
-    while(true){
-      for(int chan=0; chan<channel_nums; chan++) {
-        err = ulAIn(handle, chan, AI_SINGLE_ENDED, BIP5VOLTS, AIN_FF_DEFAULT, &data);
-        adc_results_tmp[chan] = data;
-      }
-      lock_adc();
-      for(int chan=0; chan<channel_nums; chan++) {
-        adc_results[chan] = adc_results_tmp[chan];
+	ScanEventParameters* scanEventParameters = (ScanEventParameters*) userData;
+	int chanCount = scanEventParameters->highChan  - scanEventParameters->lowChan + 1;
+	int newlineCount = chanCount + 7;
 
-      }
-      unlock_adc();
-      usleep(sample_period);
-    }
-  }
-  */
+	if (eventType == DE_ON_DATA_AVAILABLE)
+	{
+		long long scanCount = eventData;
+		long long totalSamples = scanCount * chanCount;
+
+		// TODO: if this example is changed to a CONTINUOUS scan, then you will need
+		// to maintain the index of where the data is being written to the buffer
+		// to handle the buffer wrap around condition
+		index = (totalSamples - chanCount) % scanEventParameters->bufferSize;
+
+    buff_size = chanCount;
+	}
+
+	if(eventType == DE_ON_INPUT_SCAN_ERROR)
+	{
+		for (i = 0; i < newlineCount; i++)
+			putchar('\n');
+
+		err = (UlError) eventData;
+		char errMsg[ERR_MSG_LEN];
+		ulGetErrMsg(err, errMsg);
+		printf("Error Code: %d \n", err);
+		printf("Error Message: %s \n", errMsg);
+	}
+
+
+	if (eventType == DE_ON_END_OF_INPUT_SCAN)
+	{
+		for (i = 0; i < newlineCount; i++)
+			putchar('\n');
+
+		printf("\nThe scan using device %s (%s) is complete \n", activeDevDescriptor.productName, activeDevDescriptor.uniqueId);
+	}
+}
 
 }

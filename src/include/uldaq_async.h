@@ -9,31 +9,22 @@ using namespace std;
 
 namespace daquav {
   //
-  // Locks mutex for adc data control
+  // Retrieve current results
   //
-  void lock_adc();
-
-  //
-  // Unlocks mutex for adc data control
-  //
-  void unlock_adc();
-
   double* get_results(size_t&);
-
-  //
-  // Polls DAQ at given sample rate
-  //
-  void daq_poller();
 
   //
   // Initialize DAQ handler and start the poller
   //
-  void start_daq(int, double);
+  void start_daq(int, int, double);
 
   //
   // Close connection and stop polling DAQ
   //
   void stop_daq();
+
+  // event callback
+  void eventCallbackFunction(DaqDeviceHandle daqDeviceHandle, DaqEventType eventType, unsigned long long eventData, void* userData);
 }
 
 #endif
