@@ -232,7 +232,7 @@ void eventCallbackFunction(DaqDeviceHandle daqDeviceHandle, DaqEventType eventTy
 		// to handle the buffer wrap around condition
 		index = (totalSamples - chanCount) % scanEventParameters->bufferSize;
 
-    buff_size = chanCount;
+	        buff_size = chanCount;
 	}
 
 	if(eventType == DE_ON_INPUT_SCAN_ERROR)

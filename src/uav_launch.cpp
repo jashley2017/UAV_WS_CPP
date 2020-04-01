@@ -82,8 +82,8 @@ int main(int argc, char *argv[]){
   cin >> _dummy;
 
   keep_logging = false;
-  pthread_join(my_thread, NULL); //join the thread with the main thread
   std::cout << "Logging is finishing up...." << std::endl;
+  pthread_join(my_thread, NULL); //join the thread with the main thread
 
   // Stop Sensors
   daquav::stop_daq();
@@ -103,7 +103,7 @@ long long minimum_period_in_nanoseconds(uint32_t rate_array[], int size){
       max_rate = rate_array[i];
     }
   }
-  long long period_ns = (double)(1/max_rate)*1000000000L;
+  long long period_ns = (1/(double)max_rate)*1000000000L;
   return period_ns;
 }
 
