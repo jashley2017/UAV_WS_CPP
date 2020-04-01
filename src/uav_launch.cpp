@@ -20,6 +20,7 @@ long long minimum_period_in_nanoseconds(uint32_t rate_array[], int size);
 
 auto start_time = chrono::high_resolution_clock::now();
 long long min_per = 100000; // 100 us 
+volatile bool keep_logging = true;
 
 int main(int argc, char *argv[]){
 
@@ -75,8 +76,14 @@ int main(int argc, char *argv[]){
   thread_prio.sched_priority = sched_get_priority_max(SCHED_FIFO);
   int ret = pthread_setschedparam(my_thread, SCHED_FIFO, &thread_prio);
 
+  // Hold until user says to terminate
+  string _dummy;
+  cout << "Press Enter to Stop Logging"; 
+  cin >> _dummy;
+
+  keep_logging = false;
   pthread_join(my_thread, NULL); //join the thread with the main thread
-  std::cout << "Threads will be stopped soon...." << std::endl;
+  std::cout << "Logging is finishing up...." << std::endl;
 
   // Stop Sensors
   daquav::stop_daq();
@@ -85,8 +92,10 @@ int main(int argc, char *argv[]){
   return 0;
 }
 
+//
 // returns the minimum log period neccesary to capture all sample rates.
 // Assumes sample rates are in units of Hz
+//
 long long minimum_period_in_nanoseconds(uint32_t rate_array[], int size){
   int max_rate = 0;
   for(int i=0; i<size; i++){
@@ -98,9 +107,11 @@ long long minimum_period_in_nanoseconds(uint32_t rate_array[], int size){
   return period_ns;
 }
 
+//
+// continuously logs the data in each sensors' buffer to a CSV file
+//
 void* parallelLog(void* filename) {
-
-  long log_rotate = 20000;
+  long log_rotate = (long)100*(1/(min_per*0.000000001)); // this rotates the log every 100s in terms of sample rate lines
   long line_count = 0;
   int file_count = 0;
   // This part is difficulty of passing a string as a pointer. Please ignore
@@ -110,15 +121,14 @@ void* parallelLog(void* filename) {
   curr_file.open(full_file.str());
   
   // TODO: replace with constants
-  curr_file << "Time,OdomX,OdomY,OdomZ,Temp,Pressure,DAC1,DAC2,DAC3,DAC4,DAC4,DAC5,DAC6,DAC7,DAC8\n";
+  curr_file << vnuav::get_header() << "," << "DAC1,DAC2,DAC3,DAC4,DAC4,DAC5,DAC6,DAC7,DAC8\n";
   stringstream buffer_str;
 
-  // TODO: we should handle sleep dynamically based on time of most recent sample taken and sample rate
   struct timespec sample_period = {0};
   sample_period.tv_sec = 0;
   sample_period.tv_nsec = min_per;
   
-  while(file_count < 4) { // TODO: replace with proper thread handler
+  while(keep_logging) {
     nanosleep(&sample_period, (struct timespec *)NULL);
     auto curr_time = chrono::high_resolution_clock::now();
     long long time_now = chrono::duration_cast<chrono::microseconds>(curr_time - start_time).count();
@@ -137,13 +147,16 @@ void* parallelLog(void* filename) {
       full_file.str("");
       full_file << *(static_cast<string*>(filename)) << file_count << ".csv";
       curr_file.open(full_file.str());
-      curr_file << "Time,OdomX,OdomY,OdomZ,Temp,Pressure,DAC1,DAC2,DAC3,DAC4,DAC4,DAC5,DAC6,DAC7,DAC8\n";
+      curr_file << vnuav::get_header() << "," << "DAC1,DAC2,DAC3,DAC4,DAC4,DAC5,DAC6,DAC7,DAC8\n";
     }
   }
   curr_file.close();
   return NULL;
 }
 
+//
+// retrieves buffer from ADC
+//
 void log_adc_data(stringstream& curr_file) {
     size_t size;
     double* adc_res = daquav::get_results(size);
@@ -153,45 +166,12 @@ void log_adc_data(stringstream& curr_file) {
     }
 }
 
+//
+// retrieves buffer from vectornav
+//
 void log_vec_data(stringstream& curr_file) {
-    vnuav::VectorNavData vec_data = vnuav::get_data();
     vnuav::lock_vec_data();
-    curr_file << 
-    vec_data.odom.position.x << "," <<
-    vec_data.odom.position.y << "," <<
-    vec_data.odom.position.z << "," <<
-    vec_data.temp.temperature << "," <<
-    vec_data.barom.fluid_pressure;
-    //   cout << "VectorNav: " << 
-    //   vec_data.imu.orientation.x << "," <<
-    //   vec_data.imu.orientation.y << "," <<
-    //   vec_data.imu.orientation.z << "," <<
-    //   vec_data.imu.orientation.w << "," <<
-    //   vec_data.imu.angular_velocity.x << "," <<
-    //   vec_data.imu.angular_velocity.y << "," <<
-    //   vec_data.imu.angular_velocity.z << "," <<
-    //   vec_data.imu.linear_acceleration.x << "," <<
-    //   vec_data.imu.linear_acceleration.y << "," <<
-    //   vec_data.imu.linear_acceleration.z <<"," <<
-    //   vec_data.mag.magnetic_field.x <<"," <<
-    //   vec_data.mag.magnetic_field.y <<"," <<
-    //   vec_data.mag.magnetic_field.z <<"," <<
-    //   vec_data.gps.latitude <<"," <<
-    //   vec_data.gps.longitude <<"," <<
-    //   vec_data.gps.altitude <<"," <<
-    //   vec_data.odom.position.x << "," <<
-    //   vec_data.odom.position.y <<"," <<
-    //   vec_data.odom.position.z <<"," <<
-    //   vec_data.odom.twist_linear.x <<"," <<
-    //   vec_data.odom.twist_linear.y <<"," <<
-    //   vec_data.odom.twist_linear.z <<"," <<
-    //   vec_data.odom.twist_angular.x <<"," <<
-    //   vec_data.odom.twist_angular.y <<"," <<
-    //   vec_data.odom.twist_angular.z <<"," <<
-    //   vec_data.odom.orientation.x <<"," <<
-    //   vec_data.odom.orientation.y <<"," <<
-    //   vec_data.odom.orientation.z <<"," <<
-    //   vec_data.temp.temperature << "," <<
-    //   vec_data.barom.fluid_pressure << endl;
+    char* vec_data_cstr = vnuav::get_data();
+    curr_file << vec_data_cstr;
     vnuav::unlock_vec_data();
 }

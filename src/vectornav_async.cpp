@@ -32,18 +32,21 @@ float M_PI=3.14159;
 
 namespace vnuav { 
 
+  const char* VN_HEADER = "IMU_ORIENTATION_X,IMU_ORIENTATION_Y,IMU_ORIENTATION_Z,IMU_ORIENTATION_W,IMU_ANGULAR_VELOCITY_X,IMU_ANGULAR_VELOCITY_Y,IMU_ANGULAR_VELOCITY_Z,IMU_LINEAR_ACCELERATION_X,IMU_LINEAR_ACCELERATION_Y,IMU_LINEAR_ACCELERATION_Z,MAG_MAGNETIC_FIELD_X,MAG_MAGNETIC_FIELD_Y,MAG_MAGNETIC_FIELD_Z,GPS_LATITUDE,GPS_LONGITUDE,GPS_ALTITUDE,ODOM_POSITION_X,ODOM_POSITION_Y,ODOM_POSITION_Z,ODOM_TWIST_LINEAR_X,ODOM_TWIST_LINEAR_Y,ODOM_TWIST_LINEAR_Z,ODOM_TWIST_ANGULAR_X,ODOM_TWIST_ANGULAR_Y,ODOM_TWIST_ANGULAR_Z,ODOM_ORIENTATION_X,ODOM_ORIENTATION_Y,ODOM_ORIENTATION_Z,TEMP_TEMPERATURE,BAROM_FLUID_PRESSURE";
+  const char* VN_FORMAT = "%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f";
+
+  char* vec_data_cstr; 
   VectorNavData vec_data;
   pthread_mutex_t vec_data_mut;
   VnSensor vs;
+
   array<float, 9> linear_accel_covariance ={ }; 
   array<float, 9> angular_vel_covariance={ };
   array<float, 9> orientation_covariance={ };
   Vector3 initial_position;
   bool initial_position_set = false;
   
-  VectorNavData get_data() {
-    return vec_data;
-  }
+
   void unlock_vec_data() {
     pthread_mutex_unlock(&vec_data_mut);
   }
@@ -52,7 +55,13 @@ namespace vnuav {
     pthread_mutex_lock(&vec_data_mut);
   }
 
+  char* get_data() {
+    return vec_data_cstr;
+  }
 
+  const char* get_header() { 
+    return VN_HEADER;
+  }
 
   // Holds that binary data messages for output once program is terminated.
   //
@@ -121,7 +130,6 @@ namespace vnuav {
   }
 
 
-
   //
   // Callback function to process data packet from sensor
   //
@@ -165,9 +173,7 @@ namespace vnuav {
 
           imu_msg.angular_velocity_covariance = angular_vel_covariance;
           imu_msg.linear_acceleration_covariance = linear_accel_covariance;
-          lock_vec_data();
           vec_data.imu = imu_msg;
-          unlock_vec_data();
       }
 
       // Magnetic Field
@@ -178,9 +184,7 @@ namespace vnuav {
           magnet_msg.magnetic_field.x = mag[0];
           magnet_msg.magnetic_field.y = mag[1];
           magnet_msg.magnetic_field.z = mag[2];
-          lock_vec_data();
           vec_data.mag = magnet_msg;
-          unlock_vec_data();
       }
 
       // GPS
@@ -193,7 +197,6 @@ namespace vnuav {
           gps_msg.longitude = lla[1];
           gps_msg.altitude = lla[2];
 
-          lock_vec_data();
           vec_data.gps = gps_msg;
           pthread_mutex_unlock( &vec_data_mut );
 
@@ -238,9 +241,7 @@ namespace vnuav {
               odom_msg.twist_angular.y = ar[1];
               odom_msg.twist_angular.z = ar[2];
           }
-          lock_vec_data();
           vec_data.odom = odom_msg;
-          unlock_vec_data();
       }
 
       // Temperature
@@ -250,9 +251,7 @@ namespace vnuav {
 
           Temperature temp_msg;
           temp_msg.temperature = temp;
-          lock_vec_data();
           vec_data.temp = temp_msg;
-          unlock_vec_data();
       }
 
       // Barometer
@@ -262,9 +261,41 @@ namespace vnuav {
 
           FluidPressure pres_msg;
           pres_msg.fluid_pressure = pres;
-          lock_vec_data();
           vec_data.barom = pres_msg;
-          unlock_vec_data();
       }
+
+      lock_vec_data();
+      sprintf(vec_data_cstr, VN_FORMAT, 
+        vec_data.imu.orientation.x ,
+        vec_data.imu.orientation.y ,
+        vec_data.imu.orientation.z ,
+        vec_data.imu.orientation.w ,
+        vec_data.imu.angular_velocity.x ,
+        vec_data.imu.angular_velocity.y ,
+        vec_data.imu.angular_velocity.z ,
+        vec_data.imu.linear_acceleration.x ,
+        vec_data.imu.linear_acceleration.y ,
+        vec_data.imu.linear_acceleration.z ,
+        vec_data.mag.magnetic_field.x ,
+        vec_data.mag.magnetic_field.y ,
+        vec_data.mag.magnetic_field.z ,
+        vec_data.gps.latitude ,
+        vec_data.gps.longitude ,
+        vec_data.gps.altitude ,
+        vec_data.odom.position.x ,
+        vec_data.odom.position.y,
+        vec_data.odom.position.z,
+        vec_data.odom.twist_linear.x ,
+        vec_data.odom.twist_linear.y ,
+        vec_data.odom.twist_linear.z ,
+        vec_data.odom.twist_angular.x ,
+        vec_data.odom.twist_angular.y ,
+        vec_data.odom.twist_angular.z ,
+        vec_data.odom.orientation.x ,
+        vec_data.odom.orientation.y ,
+        vec_data.odom.orientation.z ,
+        vec_data.temp.temperature ,
+        vec_data.barom.fluid_pressure );
+      unlock_vec_data();
   }
 }

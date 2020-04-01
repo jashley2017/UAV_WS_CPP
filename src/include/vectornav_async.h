@@ -10,19 +10,19 @@
 #include <mutex>
 
 // Include this header file to get access to VectorNav sensors.
- #include "vn/sensors.h"
- #include "vn/compositedata.h"
+#include "vn/sensors.h"
+#include "vn/compositedata.h"
 
- // We need this file for our sleep function.
- #include "vn/thread.h"
+// We need this file for our sleep function.
+#include "vn/thread.h"
 
- #include "yaml-cpp/yaml.h"
+#include "yaml-cpp/yaml.h"
 
- using namespace std;
- using namespace vn::math;
- using namespace vn::sensors;
- using namespace vn::protocol::uart;
- using namespace vn::xplat;
+using namespace std;
+using namespace vn::math;
+using namespace vn::sensors;
+using namespace vn::protocol::uart;
+using namespace vn::xplat;
 
 
 namespace vnuav { 
@@ -87,8 +87,8 @@ namespace vnuav {
     FluidPressure barom;
   };
 
-
-  VectorNavData get_data();
+  const char* get_header();
+  char* get_data();
   void unlock_vec_data();
   void lock_vec_data();
 }
