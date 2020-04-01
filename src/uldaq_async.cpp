@@ -14,6 +14,11 @@ using namespace std;
 
 namespace daquav {
 
+  const char* DAQ_HEADER = "DAQ1,DAQ2,DAQ3,DAQ4,DAQ5,DAQ6,DAQ7,DAQ8";
+
+  const char* get_header(){
+    return DAQ_HEADER;
+  }
 
 struct ScanEventParameters
 {
@@ -169,12 +174,10 @@ void start_daq(int low_chan, int high_chan, double in_rate)
 
 }
 
-
-
-
 size_t buff_size; 
 long long index = 0;
 double* get_results(size_t& size) {
+  // TODO: restructure the handler to allow for buffer data protection w/ mutex
   size = buff_size;
   return buffer+index;
 }

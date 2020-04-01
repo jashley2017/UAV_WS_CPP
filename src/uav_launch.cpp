@@ -14,6 +14,7 @@
 using namespace std;
 
 void* parallelLog(void*);
+void* wait_for_sig(void*);
 void log_vec_data(stringstream& curr_file);
 void log_adc_data(stringstream& curr_file);
 long long minimum_period_in_nanoseconds(uint32_t rate_array[], int size);
@@ -70,6 +71,9 @@ int main(int argc, char *argv[]){
   pthread_t my_thread; 
   pthread_create(&my_thread, NULL, parallelLog, static_cast<void*>(&csv_filename));
 
+  pthread_t sigwait;
+  pthread_create(&sigwait, NULL, wait_for_sig, NULL);
+
   // TODO: parallelLog is getting slept by some other thread and causing increased delay
   //        when it is set to max prio, the delay is what is expected
   struct sched_param thread_prio;
@@ -77,12 +81,10 @@ int main(int argc, char *argv[]){
   int ret = pthread_setschedparam(my_thread, SCHED_FIFO, &thread_prio);
 
   // Hold until user says to terminate
-  string _dummy;
   cout << "Press Enter to Stop Logging"; 
-  cin >> _dummy;
-
+  pthread_join(sigwait, NULL);
   keep_logging = false;
-  std::cout << "Logging is finishing up...." << std::endl;
+  cout << "Logging is finishing up...." << endl;
   pthread_join(my_thread, NULL); //join the thread with the main thread
 
   // Stop Sensors
@@ -92,6 +94,11 @@ int main(int argc, char *argv[]){
   return 0;
 }
 
+void* wait_for_sig(void*){
+  string _dummy;
+  getline(cin, _dummy);
+  return NULL;
+}
 //
 // returns the minimum log period neccesary to capture all sample rates.
 // Assumes sample rates are in units of Hz
@@ -120,18 +127,54 @@ void* parallelLog(void* filename) {
   ofstream curr_file; 
   curr_file.open(full_file.str());
   
-  // TODO: replace with constants
-  curr_file << vnuav::get_header() << "," << "DAC1,DAC2,DAC3,DAC4,DAC4,DAC5,DAC6,DAC7,DAC8\n";
+  curr_file << vnuav::get_header() << "," << daquav::get_header() << "\n";
   stringstream buffer_str;
 
   struct timespec sample_period = {0};
   sample_period.tv_sec = 0;
   sample_period.tv_nsec = min_per;
-  
+
+  // setup time variables
+  chrono::high_resolution_clock::time_point curr_time;
+  long long time_now;
+  chrono::high_resolution_clock::time_point end_time;
+  long long process_time;
+
+  // let all sensors start up and then do an initial run to check how much time processing takes
+  usleep(100);
+  curr_time = chrono::high_resolution_clock::now();
+  time_now = chrono::duration_cast<chrono::microseconds>(curr_time - start_time).count();
+  buffer_str << time_now << ",";
+  log_vec_data(buffer_str);
+  buffer_str << ",";
+  log_adc_data(buffer_str);
+  buffer_str << "\n";
+  curr_file << buffer_str.rdbuf();
+  buffer_str.clear();
+  line_count++;
+  if(line_count > log_rotate) {
+    curr_file.close();
+    line_count = 0;
+    file_count++;
+    full_file.str("");
+    full_file << *(static_cast<string*>(filename)) << file_count << ".csv";
+    curr_file.open(full_file.str());
+    curr_file << vnuav::get_header() << "," << daquav::get_header() << "\n";
+  }
+  end_time = chrono::high_resolution_clock::now();
+  process_time = chrono::duration_cast<chrono::microseconds>(end_time - curr_time).count();
+  if(process_time*1000>sample_period.tv_nsec){
+    cout << "WARNING: cannot garuntee capture of all data at this sample rate. (too high)";
+    sample_period.tv_nsec = 0;
+  }
+  else { 
+    sample_period.tv_nsec = sample_period.tv_nsec- process_time*1000;
+  }
+
   while(keep_logging) {
     nanosleep(&sample_period, (struct timespec *)NULL);
-    auto curr_time = chrono::high_resolution_clock::now();
-    long long time_now = chrono::duration_cast<chrono::microseconds>(curr_time - start_time).count();
+    curr_time = chrono::high_resolution_clock::now();
+    time_now = chrono::duration_cast<chrono::microseconds>(curr_time - start_time).count();
     buffer_str << time_now << ",";
     log_vec_data(buffer_str);
     buffer_str << ",";
@@ -147,7 +190,7 @@ void* parallelLog(void* filename) {
       full_file.str("");
       full_file << *(static_cast<string*>(filename)) << file_count << ".csv";
       curr_file.open(full_file.str());
-      curr_file << vnuav::get_header() << "," << "DAC1,DAC2,DAC3,DAC4,DAC4,DAC5,DAC6,DAC7,DAC8\n";
+      curr_file << vnuav::get_header() << "," << daquav::get_header() << "\n";
     }
   }
   curr_file.close();

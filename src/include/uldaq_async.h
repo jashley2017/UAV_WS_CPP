@@ -13,6 +13,8 @@ namespace daquav {
   //
   double* get_results(size_t&);
 
+  const char* get_header();
+
   //
   // Initialize DAQ handler and start the poller
   //
