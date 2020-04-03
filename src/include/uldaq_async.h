@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <chrono>
 #include "uldaq.h"
 using namespace std;
 
@@ -18,7 +19,7 @@ namespace daquav {
   //
   // Initialize DAQ handler and start the poller
   //
-  void start_daq(int, int, double);
+  void start_daq(int, int, double, chrono::high_resolution_clock::time_point);
 
   //
   // Close connection and stop polling DAQ

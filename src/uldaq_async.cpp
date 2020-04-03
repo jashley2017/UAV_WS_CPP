@@ -2,9 +2,12 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <iostream>
+#include <sstream>
+#include <chrono>
 #include "uldaq.h"
 #include "include/utility.h"
 #include "include/uldaq_async.h"
+#include "logtk/logtk/logtk.hpp"
 
 #define MAX_DEV_COUNT  100
 #define MAX_STR_LENGTH 64
@@ -15,6 +18,7 @@ using namespace std;
 namespace daquav {
 
   const char* DAQ_HEADER = "DAQ1,DAQ2,DAQ3,DAQ4,DAQ5,DAQ6,DAQ7,DAQ8";
+  chrono::high_resolution_clock::time_point start_time;
 
   const char* get_header(){
     return DAQ_HEADER;
@@ -34,8 +38,11 @@ double* buffer = NULL;
 DaqDeviceHandle daqDeviceHandle = 0;
 DaqEventType eventTypes = (DaqEventType) (DE_ON_DATA_AVAILABLE | DE_ON_INPUT_SCAN_ERROR | DE_ON_END_OF_INPUT_SCAN);
 
-void start_daq(int low_chan, int high_chan, double in_rate)
+void start_daq(int low_chan, int high_chan, double in_rate, chrono::high_resolution_clock::time_point time_now)
 {
+
+  start_time = time_now;
+
 	int descriptorIndex = 0;
 	DaqDeviceDescriptor devDescriptors[MAX_DEV_COUNT];
 	DaqDeviceInterface interfaceType = ANY_IFC;
@@ -234,8 +241,18 @@ void eventCallbackFunction(DaqDeviceHandle daqDeviceHandle, DaqEventType eventTy
 		// to maintain the index of where the data is being written to the buffer
 		// to handle the buffer wrap around condition
 		index = (totalSamples - chanCount) % scanEventParameters->bufferSize;
+    buff_size = chanCount;
 
-	        buff_size = chanCount;
+    stringstream logline;
+    chrono::high_resolution_clock::time_point curr_time;
+    long long time_now = chrono::duration_cast<chrono::microseconds>(curr_time - start_time).count();
+    logline << time_now;
+
+    for(i=0;i<buff_size;i++) {
+      logline << "," << buffer[index+i];
+    }
+    
+    logtk::log(logline.str());
 	}
 
 	if(eventType == DE_ON_INPUT_SCAN_ERROR)

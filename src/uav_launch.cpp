@@ -1,27 +1,19 @@
 #include "include/vectornav_async.h"
 #include "include/uldaq_async.h"
 #include "yaml-cpp/yaml.h"
+#include "logtk/logtk/logtk.hpp"
 #include <pthread.h>
-#include <sched.h>
 #include <unistd.h>
 #include <chrono>
 #include <iostream>
-#include <fstream>
 #include <string>
-#include <sstream>
 #include <time.h>
 
 using namespace std;
 
-void* parallelLog(void*);
 void* wait_for_sig(void*);
-void log_vec_data(stringstream& curr_file);
-void log_adc_data(stringstream& curr_file);
-long long minimum_period_in_nanoseconds(uint32_t rate_array[], int size);
 
 auto start_time = chrono::high_resolution_clock::now();
-long long min_per = 100000; // 100 us 
-volatile bool keep_logging = true;
 
 int main(int argc, char *argv[]){
 
@@ -35,6 +27,7 @@ int main(int argc, char *argv[]){
   uint32_t high_chan = 1;
 
   string csv_filename;
+  string csv_pathname;
 
   if (argc == 2) {
     cout << "Using configuration provided by: " << argv[1] << endl;
@@ -54,42 +47,40 @@ int main(int argc, char *argv[]){
 
     //outfile 
     csv_filename = config["outfile"].as<string>().c_str();
+    csv_pathname = config["outpath"].as<string>().c_str();
 
   } else {
     cout << "No configuration provided, will use defaults." << endl;
-    csv_filename = "./test";
+    csv_filename = "test";
+    csv_pathname = ".";
   }
 
+
+  // Setup threadsafe log 
+  if(!logtk::start_logger(csv_filename,csv_pathname))
+  {
+    cerr << "ERROR - could not start log";
+    return 1;
+  }
+  logtk::log("Log Start");
+
   // Start Sensors
-  vnuav::start_vs(vec_baud, vec_port, vec_rate);
-  daquav::start_daq(low_chan, high_chan, dac_rate);
+  vnuav::start_vs(vec_baud, vec_port, vec_rate, start_time);
+  daquav::start_daq(low_chan, high_chan, dac_rate, start_time);
 
-  // Start Logging Thread
-  uint32_t sample_rates[2]= {vec_rate, dac_rate};
-  min_per = minimum_period_in_nanoseconds(sample_rates, 2);
-
-  pthread_t my_thread; 
-  pthread_create(&my_thread, NULL, parallelLog, static_cast<void*>(&csv_filename));
-
+  // Hold until user says to terminate
   pthread_t sigwait;
   pthread_create(&sigwait, NULL, wait_for_sig, NULL);
 
-  // TODO: parallelLog is getting slept by some other thread and causing increased delay
-  //        when it is set to max prio, the delay is what is expected
-  struct sched_param thread_prio;
-  thread_prio.sched_priority = sched_get_priority_max(SCHED_FIFO);
-  int ret = pthread_setschedparam(my_thread, SCHED_FIFO, &thread_prio);
-
-  // Hold until user says to terminate
   cout << "Press Enter to Stop Logging"; 
   pthread_join(sigwait, NULL);
-  keep_logging = false;
   cout << "Logging is finishing up...." << endl;
-  pthread_join(my_thread, NULL); //join the thread with the main thread
 
   // Stop Sensors
   daquav::stop_daq();
   vnuav::stop_vs();
+
+  logtk::stop_logger();
 
   return 0;
 }
@@ -98,123 +89,4 @@ void* wait_for_sig(void*){
   string _dummy;
   getline(cin, _dummy);
   return NULL;
-}
-//
-// returns the minimum log period neccesary to capture all sample rates.
-// Assumes sample rates are in units of Hz
-//
-long long minimum_period_in_nanoseconds(uint32_t rate_array[], int size){
-  int max_rate = 0;
-  for(int i=0; i<size; i++){
-    if (rate_array[i] > max_rate) {
-      max_rate = rate_array[i];
-    }
-  }
-  long long period_ns = (1/(double)max_rate)*1000000000L;
-  return period_ns;
-}
-
-//
-// continuously logs the data in each sensors' buffer to a CSV file
-//
-void* parallelLog(void* filename) {
-  long log_rotate = (long)100*(1/(min_per*0.000000001)); // this rotates the log every 100s in terms of sample rate lines
-  long line_count = 0;
-  int file_count = 0;
-  // This part is difficulty of passing a string as a pointer. Please ignore
-  std::ostringstream full_file;
-  full_file << *(static_cast<string*>(filename)) << file_count << ".csv";
-  ofstream curr_file; 
-  curr_file.open(full_file.str());
-  
-  curr_file << vnuav::get_header() << "," << daquav::get_header() << "\n";
-  stringstream buffer_str;
-
-  struct timespec sample_period = {0};
-  sample_period.tv_sec = 0;
-  sample_period.tv_nsec = min_per;
-
-  // setup time variables
-  chrono::high_resolution_clock::time_point curr_time;
-  long long time_now;
-  chrono::high_resolution_clock::time_point end_time;
-  long long process_time;
-
-  // let all sensors start up and then do an initial run to check how much time processing takes
-  usleep(100);
-  curr_time = chrono::high_resolution_clock::now();
-  time_now = chrono::duration_cast<chrono::microseconds>(curr_time - start_time).count();
-  buffer_str << time_now << ",";
-  log_vec_data(buffer_str);
-  buffer_str << ",";
-  log_adc_data(buffer_str);
-  buffer_str << "\n";
-  curr_file << buffer_str.rdbuf();
-  buffer_str.clear();
-  line_count++;
-  if(line_count > log_rotate) {
-    curr_file.close();
-    line_count = 0;
-    file_count++;
-    full_file.str("");
-    full_file << *(static_cast<string*>(filename)) << file_count << ".csv";
-    curr_file.open(full_file.str());
-    curr_file << vnuav::get_header() << "," << daquav::get_header() << "\n";
-  }
-  end_time = chrono::high_resolution_clock::now();
-  process_time = chrono::duration_cast<chrono::microseconds>(end_time - curr_time).count();
-  if(process_time*1000>sample_period.tv_nsec){
-    cout << "WARNING: cannot garuntee capture of all data at this sample rate. (too high)";
-    sample_period.tv_nsec = 0;
-  }
-  else { 
-    sample_period.tv_nsec = sample_period.tv_nsec- process_time*1000;
-  }
-
-  while(keep_logging) {
-    nanosleep(&sample_period, (struct timespec *)NULL);
-    curr_time = chrono::high_resolution_clock::now();
-    time_now = chrono::duration_cast<chrono::microseconds>(curr_time - start_time).count();
-    buffer_str << time_now << ",";
-    log_vec_data(buffer_str);
-    buffer_str << ",";
-    log_adc_data(buffer_str);
-    buffer_str << "\n";
-    curr_file << buffer_str.rdbuf();
-    buffer_str.clear();
-    line_count++;
-    if(line_count > log_rotate) {
-      curr_file.close();
-      line_count = 0;
-      file_count++;
-      full_file.str("");
-      full_file << *(static_cast<string*>(filename)) << file_count << ".csv";
-      curr_file.open(full_file.str());
-      curr_file << vnuav::get_header() << "," << daquav::get_header() << "\n";
-    }
-  }
-  curr_file.close();
-  return NULL;
-}
-
-//
-// retrieves buffer from ADC
-//
-void log_adc_data(stringstream& curr_file) {
-    size_t size;
-    double* adc_res = daquav::get_results(size);
-    curr_file << adc_res[0]; // precede the comma without if statements
-    for(int i=1; i < size; i++){ 
-      curr_file << "," << adc_res[i];
-    }
-}
-
-//
-// retrieves buffer from vectornav
-//
-void log_vec_data(stringstream& curr_file) {
-    vnuav::lock_vec_data();
-    char* vec_data_cstr = vnuav::get_data();
-    curr_file << vec_data_cstr;
-    vnuav::unlock_vec_data();
 }

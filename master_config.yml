@@ -6,4 +6,5 @@ dac:
   low_chan: 0
   high_chan: 7
   sample_rate: 20000 # 20kHz
-outfile: "/home/josh/Projects/UAV/logs/uav_run"
+outfile: "uav_run"
+outpath: "/home/josh/Projects/UAV/logs/"

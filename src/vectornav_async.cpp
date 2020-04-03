@@ -16,6 +16,8 @@
 // We need this file for our sleep function.
 #include "vn/thread.h"
 
+#include "logtk/logtk/logtk.hpp"
+
 #include "include/vectornav_async.h"
 
 using namespace std;
@@ -32,9 +34,9 @@ float M_PI=3.14159;
 
 namespace vnuav { 
 
-  const char* VN_HEADER = "IMU_ORIENTATION_X,IMU_ORIENTATION_Y,IMU_ORIENTATION_Z,IMU_ORIENTATION_W,IMU_ANGULAR_VELOCITY_X,IMU_ANGULAR_VELOCITY_Y,IMU_ANGULAR_VELOCITY_Z,IMU_LINEAR_ACCELERATION_X,IMU_LINEAR_ACCELERATION_Y,IMU_LINEAR_ACCELERATION_Z,MAG_MAGNETIC_FIELD_X,MAG_MAGNETIC_FIELD_Y,MAG_MAGNETIC_FIELD_Z,GPS_LATITUDE,GPS_LONGITUDE,GPS_ALTITUDE,ODOM_POSITION_X,ODOM_POSITION_Y,ODOM_POSITION_Z,ODOM_TWIST_LINEAR_X,ODOM_TWIST_LINEAR_Y,ODOM_TWIST_LINEAR_Z,ODOM_TWIST_ANGULAR_X,ODOM_TWIST_ANGULAR_Y,ODOM_TWIST_ANGULAR_Z,ODOM_ORIENTATION_X,ODOM_ORIENTATION_Y,ODOM_ORIENTATION_Z,TEMP_TEMPERATURE,BAROM_FLUID_PRESSURE";
-  const char* VN_FORMAT = "%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f";
-  const int BUFSIZE = sizeof(float)*30+29; //this is the bytesize of the format string with all floats + , 
+  const char* VN_HEADER = "TIME,ID,IMU_ORIENTATION_X,IMU_ORIENTATION_Y,IMU_ORIENTATION_Z,IMU_ORIENTATION_W,IMU_ANGULAR_VELOCITY_X,IMU_ANGULAR_VELOCITY_Y,IMU_ANGULAR_VELOCITY_Z,IMU_LINEAR_ACCELERATION_X,IMU_LINEAR_ACCELERATION_Y,IMU_LINEAR_ACCELERATION_Z,MAG_MAGNETIC_FIELD_X,MAG_MAGNETIC_FIELD_Y,MAG_MAGNETIC_FIELD_Z,GPS_LATITUDE,GPS_LONGITUDE,GPS_ALTITUDE,ODOM_POSITION_X,ODOM_POSITION_Y,ODOM_POSITION_Z,ODOM_TWIST_LINEAR_X,ODOM_TWIST_LINEAR_Y,ODOM_TWIST_LINEAR_Z,ODOM_TWIST_ANGULAR_X,ODOM_TWIST_ANGULAR_Y,ODOM_TWIST_ANGULAR_Z,ODOM_ORIENTATION_X,ODOM_ORIENTATION_Y,ODOM_ORIENTATION_Z,TEMP_TEMPERATURE,BAROM_FLUID_PRESSURE";
+  const char* VN_FORMAT = "%lld,VN,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f";
+  const int BUFSIZE = sizeof(long)+sizeof(float)*30+32; //this is the bytesize of the format string with all floats + , 
 
   char vec_data_cstr[BUFSIZE] = {0}; 
   VectorNavData vec_data;
@@ -46,7 +48,8 @@ namespace vnuav {
   array<float, 9> orientation_covariance={ };
   Vector3 initial_position;
   bool initial_position_set = false;
-  
+
+  chrono::high_resolution_clock::time_point start_time;
 
   void unlock_vec_data() {
     pthread_mutex_unlock(&vec_data_mut);
@@ -68,11 +71,13 @@ namespace vnuav {
   //
   // Start the VectorNav with the given settings
   //
-  void start_vs (uint32_t baud, string port, uint32_t sample_rate)
+  void start_vs (uint32_t baud, string port, uint32_t sample_rate, chrono::high_resolution_clock::time_point start_t)
   {
     // Set connection properties
     string SensorPort = port;
     uint32_t SensorBaudrate = baud;
+
+    start_time = start_t;
 
     //EXAMPLES:
     //const string SensorPort = "COM1";                             // Windows format for physical and virtual (USB) serial port.
@@ -139,8 +144,8 @@ namespace vnuav {
       vn::sensors::CompositeData cd = vn::sensors::CompositeData::parse(p);
       UserData user_data = *static_cast<UserData*>(userData);
 
-      auto now = chrono::high_resolution_clock::now();
-      auto timestamp = chrono::duration_cast<chrono::milliseconds>(now.time_since_epoch()).count();
+      auto curr_time = chrono::high_resolution_clock::now();
+      long long sample_time = chrono::duration_cast<chrono::microseconds>(curr_time - start_time).count();
 
       // IMU
       Imu imu_msg;
@@ -267,6 +272,7 @@ namespace vnuav {
 
       lock_vec_data();
       snprintf(vec_data_cstr, BUFSIZE-1, VN_FORMAT, 
+        sample_time,
         vec_data.imu.orientation.x ,
         vec_data.imu.orientation.y ,
         vec_data.imu.orientation.z ,
@@ -297,6 +303,7 @@ namespace vnuav {
         vec_data.odom.orientation.z ,
         vec_data.temp.temperature ,
         vec_data.barom.fluid_pressure );
+      logtk::log(vec_data_cstr);
       unlock_vec_data();
   }
 }

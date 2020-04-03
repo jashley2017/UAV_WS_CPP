@@ -29,7 +29,7 @@ namespace vnuav {
 
   // Method declarations for future use.
   void BinaryAsyncMessageReceived(void* userData, Packet& p, size_t index);
-  void start_vs (uint32_t baud, string port, uint32_t sample_rate);
+  void start_vs (uint32_t baud, string port, uint32_t sample_rate, chrono::high_resolution_clock::time_point);
   void stop_vs();
 
   // Holds that binary data messages for output once program is terminated.
