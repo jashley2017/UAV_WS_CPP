@@ -145,6 +145,9 @@ void start_daq(int low_chan, int high_chan, double in_rate)
 	// allocate a buffer to receive the data
 	bufferSize = chanCount * samplesPerChannel;
 	buffer = (double*) malloc(bufferSize * sizeof(double));
+	for(i=0;i<bufferSize;i++){
+		buffer[i] = 0; // pad with zeros
+	}	
 
 	if(buffer == NULL)
 	{

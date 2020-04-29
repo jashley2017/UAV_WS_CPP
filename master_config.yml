@@ -4,6 +4,6 @@ vectornav:
   sample_rate: 40
 dac:
   low_chan: 0
-  high_chan: 7
+  high_chan: 8
   sample_rate: 20000 # 20kHz
-outfile: "/home/josh/Projects/UAV/logs/uav_run"
+outfile: "/home/pi/logs/uav_run"

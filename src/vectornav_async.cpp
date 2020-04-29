@@ -113,6 +113,37 @@ namespace vnuav {
             | INSGROUP_ACCELECEF
             );
 
+	// init everything to zero
+        vec_data.imu.orientation.x =0;
+        vec_data.imu.orientation.y =0;
+        vec_data.imu.orientation.z =0;
+        vec_data.imu.orientation.w =0;
+        vec_data.imu.angular_velocity.x =0;
+        vec_data.imu.angular_velocity.y =0;
+        vec_data.imu.angular_velocity.z =0;
+        vec_data.imu.linear_acceleration.x =0;
+        vec_data.imu.linear_acceleration.y =0;
+        vec_data.imu.linear_acceleration.z =0;
+        vec_data.mag.magnetic_field.x =0;
+        vec_data.mag.magnetic_field.y =0;
+        vec_data.mag.magnetic_field.z =0;
+        vec_data.gps.latitude =0;
+        vec_data.gps.longitude =0;
+        vec_data.gps.altitude =0;
+        vec_data.odom.position.x =0;
+        vec_data.odom.position.y=0;
+        vec_data.odom.position.z=0;
+        vec_data.odom.twist_linear.x =0;
+        vec_data.odom.twist_linear.y =0;
+        vec_data.odom.twist_linear.z =0;
+        vec_data.odom.twist_angular.x =0;
+        vec_data.odom.twist_angular.y =0;
+        vec_data.odom.twist_angular.z =0;
+        vec_data.odom.orientation.x =0;
+        vec_data.odom.orientation.y =0;
+        vec_data.odom.orientation.z =0;
+        vec_data.temp.temperature =0;
+        vec_data.barom.fluid_pressure =0;
 
     vs.writeBinaryOutput1(bor);
 

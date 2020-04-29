@@ -127,7 +127,7 @@ void* parallelLog(void* filename) {
   ofstream curr_file; 
   curr_file.open(full_file.str());
   
-  curr_file << vnuav::get_header() << "," << daquav::get_header() << "\n";
+  curr_file << "TIME," << vnuav::get_header() << "," << daquav::get_header() << "\n";
   stringstream buffer_str;
 
   struct timespec sample_period = {0};
@@ -190,7 +190,7 @@ void* parallelLog(void* filename) {
       full_file.str("");
       full_file << *(static_cast<string*>(filename)) << file_count << ".csv";
       curr_file.open(full_file.str());
-      curr_file << vnuav::get_header() << "," << daquav::get_header() << "\n";
+      curr_file << "TIME," << vnuav::get_header() << "," << daquav::get_header() << "\n";
     }
   }
   curr_file.close();
