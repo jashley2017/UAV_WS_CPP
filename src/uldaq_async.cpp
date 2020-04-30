@@ -12,29 +12,25 @@
 
 using namespace std;
 
-namespace daquav {
-
-  const char* DAQ_HEADER = "DAQ1,DAQ2,DAQ3,DAQ4,DAQ5,DAQ6,DAQ7,DAQ8";
-
-  const char* get_header(){
-    return DAQ_HEADER;
-  }
-
-struct ScanEventParameters
-{
-	double* buffer;	// data buffer
-	int bufferSize;	// data buffer size
-	int lowChan;	// first channel in acquisition
-	int highChan;	// last channel in acquisition
-	double rate;
-};
-typedef struct ScanEventParameters ScanEventParameters;
-
-double* buffer = NULL;
 DaqDeviceHandle daqDeviceHandle = 0;
+
 DaqEventType eventTypes = (DaqEventType) (DE_ON_DATA_AVAILABLE | DE_ON_INPUT_SCAN_ERROR | DE_ON_END_OF_INPUT_SCAN);
 
-void start_daq(int low_chan, int high_chan, double in_rate)
+const char* DAQ_HEADER = "DAQ1,DAQ2,DAQ3,DAQ4,DAQ5,DAQ6,DAQ7,DAQ8";
+
+const char* DaqUav::get_header(){
+  return DAQ_HEADER;
+}
+
+DaqUav::DaqUav(int lchan, int hchan, double rate) { 
+  scan_data.lowChan = lchan;
+  scan_data.highChan = hchan;
+  scan_data.rate = rate;
+  buffer = NULL;
+  scan_data.index = 0;
+}
+
+void DaqUav::start_daq()
 {
 	int descriptorIndex = 0;
 	DaqDeviceDescriptor devDescriptors[MAX_DEV_COUNT];
@@ -43,12 +39,12 @@ void start_daq(int low_chan, int high_chan, double in_rate)
 	ScanEventParameters scanEventParameters;
 
 	// set some variables that are used to acquire data
-	int lowChan = low_chan;
-	int highChan = high_chan;
+	int lowChan = scan_data.lowChan;
+	int highChan = scan_data.highChan;
 	AiInputMode inputMode;
 	Range range;
 	int samplesPerChannel = 1;
-	double rate = in_rate;
+	double rate = scan_data.rate;
 	AInScanFlag flags = AINSCAN_FF_DEFAULT;
 
 	// set the scan options for a FINITE scan ... to set the scan options for
@@ -156,10 +152,10 @@ void start_daq(int low_chan, int high_chan, double in_rate)
 	}
 
 	// store the scan event parameters for use in the callback function
-	scanEventParameters.buffer =  buffer;
-	scanEventParameters.bufferSize =  bufferSize;
-	scanEventParameters.lowChan = lowChan;
-	scanEventParameters.highChan = highChan;
+	scan_data.buffer =  buffer;
+	scan_data.bufferSize =  bufferSize;
+	scan_data.lowChan = lowChan;
+	scan_data.highChan = highChan;
 
 	// enable the event to be notified every time 100 samples are available
 	availableSampleCount = 100;
@@ -173,19 +169,17 @@ void start_daq(int low_chan, int high_chan, double in_rate)
 	// start the finite acquisition
 	err = ulAInScan(daqDeviceHandle, lowChan, highChan, inputMode, range, samplesPerChannel, &rate, scanOptions, flags, buffer);
 
-	scanEventParameters.rate = rate;
+	scan_data.rate = rate;
 
 }
 
-size_t buff_size; 
-long long index = 0;
-double* get_results(size_t& size) {
+double* DaqUav::get_results(size_t& size) {
   // TODO: restructure the handler to allow for buffer data protection w/ mutex
-  size = buff_size;
-  return buffer+index;
+  size = scan_data.bufferSize;
+  return buffer+scan_data.index;
 }
 
-void stop_daq() {
+void DaqUav::stop_daq() {
 	UlError err = ERR_NO_ERROR;
   err = ulAInScanStop(daqDeviceHandle);
 
@@ -217,7 +211,7 @@ void stop_daq() {
 /*
  * Event handler for when data is ready from the samples
  */
-void eventCallbackFunction(DaqDeviceHandle daqDeviceHandle, DaqEventType eventType, unsigned long long eventData, void* userData)
+void DaqUav::eventCallbackFunction(DaqDeviceHandle daqDeviceHandle, DaqEventType eventType, unsigned long long eventData, void* userData)
 {
 	char eventTypeStr[MAX_STR_LENGTH];
 	UlError err = ERR_NO_ERROR;
@@ -236,9 +230,7 @@ void eventCallbackFunction(DaqDeviceHandle daqDeviceHandle, DaqEventType eventTy
 		// TODO: if this example is changed to a CONTINUOUS scan, then you will need
 		// to maintain the index of where the data is being written to the buffer
 		// to handle the buffer wrap around condition
-		index = (totalSamples - chanCount) % scanEventParameters->bufferSize;
-
-	        buff_size = chanCount;
+		scanEventParameters->index = (totalSamples - chanCount) % scanEventParameters->bufferSize;
 	}
 
 	if(eventType == DE_ON_INPUT_SCAN_ERROR)
@@ -261,6 +253,4 @@ void eventCallbackFunction(DaqDeviceHandle daqDeviceHandle, DaqEventType eventTy
 
 		printf("\nThe scan using device %s (%s) is complete \n", activeDevDescriptor.productName, activeDevDescriptor.uniqueId);
 	}
-}
-
 }

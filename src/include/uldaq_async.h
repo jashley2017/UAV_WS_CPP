@@ -7,26 +7,29 @@
 #include "uldaq.h"
 using namespace std;
 
-namespace daquav {
-  //
-  // Retrieve current results
-  //
-  double* get_results(size_t&);
+  struct ScanEventParameters
+  {
+    double* buffer;	// data buffer
+    int bufferSize;	// data buffer size
+    int lowChan;	// first channel in acquisition
+    int highChan;	// last channel in acquisition
+    double rate; // actual sample rate
+    long long index; // memory offset to start the buffer
+  };
 
-  const char* get_header();
+  typedef struct ScanEventParameters ScanEventParameters;
 
-  //
-  // Initialize DAQ handler and start the poller
-  //
-  void start_daq(int, int, double);
-
-  //
-  // Close connection and stop polling DAQ
-  //
-  void stop_daq();
-
-  // event callback
-  void eventCallbackFunction(DaqDeviceHandle daqDeviceHandle, DaqEventType eventType, unsigned long long eventData, void* userData);
-}
+  class DaqUav {
+    public:
+      DaqUav(int lchan, int hchan, double rate); // init parameters for the DAQ
+      void start_daq(); // start the daq in async Ain mode
+      double* get_results(size_t& size); // get current results from the buffer
+      void stop_daq(); // stop the async handler and suspend DAQ 
+      static const char* get_header(); // get the CSV header formating for the DAQ
+    private:
+      static void eventCallbackFunction(DaqDeviceHandle daqDeviceHandle, DaqEventType eventType, unsigned long long eventData, void* userData); // async event handler
+      ScanEventParameters scan_data; // data about the scan pass along to the static event handler
+      double* buffer;
+  };
 
 #endif
