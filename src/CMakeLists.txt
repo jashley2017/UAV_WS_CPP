@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.0)
 
 project(uav)
 
-add_compile_options(-std=c++11 -g -O3)
+add_compile_options(-std=c++17 -g -O3)
 
 add_subdirectory(vnproglib-1.1.4.0/cpp)
 add_subdirectory(yaml-cpp)

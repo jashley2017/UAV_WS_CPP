@@ -22,6 +22,7 @@ long long minimum_period_in_nanoseconds(uint32_t rate_array[], int size);
 auto start_time = chrono::high_resolution_clock::now();
 long long min_per = 100000; // 100 us 
 volatile bool keep_logging = true;
+DaqUav *daq; 
 
 int main(int argc, char *argv[]){
 
@@ -62,7 +63,8 @@ int main(int argc, char *argv[]){
 
   // Start Sensors
   vnuav::start_vs(vec_baud, vec_port, vec_rate);
-  daquav::start_daq(low_chan, high_chan, dac_rate);
+  daq = new DaqUav(low_chan, high_chan, dac_rate); 
+  daq->start_daq();
 
   // Start Logging Thread
   uint32_t sample_rates[2]= {vec_rate, dac_rate};
@@ -88,7 +90,7 @@ int main(int argc, char *argv[]){
   pthread_join(my_thread, NULL); //join the thread with the main thread
 
   // Stop Sensors
-  daquav::stop_daq();
+  daq->stop_daq();
   vnuav::stop_vs();
 
   return 0;
@@ -127,7 +129,7 @@ void* parallelLog(void* filename) {
   ofstream curr_file; 
   curr_file.open(full_file.str());
   
-  curr_file << "TIME," << vnuav::get_header() << "," << daquav::get_header() << "\n";
+  curr_file << "TIME," << vnuav::get_header() << "," << DaqUav::get_header() << "\n";
   stringstream buffer_str;
 
   struct timespec sample_period = {0};
@@ -141,6 +143,7 @@ void* parallelLog(void* filename) {
   long long process_time;
 
   // let all sensors start up and then do an initial run to check how much time processing takes
+  // TODO: the first couple runs take longer than the rest because of caching, sample multiple runs instead
   usleep(100);
   curr_time = chrono::high_resolution_clock::now();
   time_now = chrono::duration_cast<chrono::microseconds>(curr_time - start_time).count();
@@ -159,12 +162,12 @@ void* parallelLog(void* filename) {
     full_file.str("");
     full_file << *(static_cast<string*>(filename)) << file_count << ".csv";
     curr_file.open(full_file.str());
-    curr_file << vnuav::get_header() << "," << daquav::get_header() << "\n";
+    curr_file << vnuav::get_header() << "," << DaqUav::get_header() << "\n";
   }
   end_time = chrono::high_resolution_clock::now();
   process_time = chrono::duration_cast<chrono::microseconds>(end_time - curr_time).count();
   if(process_time*1000>sample_period.tv_nsec){
-    cout << "WARNING: cannot garuntee capture of all data at this sample rate. (too high)";
+    cout << "WARNING: cannot garuntee capture of all data at this sample rate. (too high)" << endl;
     sample_period.tv_nsec = 0;
   }
   else { 
@@ -190,7 +193,7 @@ void* parallelLog(void* filename) {
       full_file.str("");
       full_file << *(static_cast<string*>(filename)) << file_count << ".csv";
       curr_file.open(full_file.str());
-      curr_file << "TIME," << vnuav::get_header() << "," << daquav::get_header() << "\n";
+      curr_file << "TIME," << vnuav::get_header() << "," << DaqUav::get_header() << "\n";
     }
   }
   curr_file.close();
@@ -202,7 +205,7 @@ void* parallelLog(void* filename) {
 //
 void log_adc_data(stringstream& curr_file) {
     size_t size;
-    double* adc_res = daquav::get_results(size);
+    double* adc_res = daq->get_results(size);
     curr_file << adc_res[0]; // precede the comma without if statements
     for(int i=1; i < size; i++){ 
       curr_file << "," << adc_res[i];
