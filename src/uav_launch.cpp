@@ -144,28 +144,37 @@ void* parallelLog(void* filename) {
 
   // let all sensors start up and then do an initial run to check how much time processing takes
   // TODO: the first couple runs take longer than the rest because of caching, sample multiple runs instead
+
+  
   usleep(100);
   curr_time = chrono::high_resolution_clock::now();
-  time_now = chrono::duration_cast<chrono::microseconds>(curr_time - start_time).count();
-  buffer_str << time_now << ",";
-  log_vec_data(buffer_str);
-  buffer_str << ",";
-  log_adc_data(buffer_str);
-  buffer_str << "\n";
-  curr_file << buffer_str.rdbuf();
-  buffer_str.clear();
-  line_count++;
-  if(line_count > log_rotate) {
-    curr_file.close();
-    line_count = 0;
-    file_count++;
-    full_file.str("");
-    full_file << *(static_cast<string*>(filename)) << file_count << ".csv";
-    curr_file.open(full_file.str());
-    curr_file << vnuav::get_header() << "," << DaqUav::get_header() << "\n";
+
+  const int test_count = 100;
+  int run_count = 0;
+  while(run_count < test_count) { 
+    time_now = chrono::duration_cast<chrono::microseconds>(curr_time - start_time).count();
+    buffer_str << time_now << ",";
+    log_vec_data(buffer_str);
+    buffer_str << ",";
+    log_adc_data(buffer_str);
+    buffer_str << "\n";
+    curr_file << buffer_str.rdbuf();
+    buffer_str.clear();
+    line_count++;
+    if(line_count > log_rotate) {
+      curr_file.close();
+      line_count = 0;
+      file_count++;
+      full_file.str("");
+      full_file << *(static_cast<string*>(filename)) << file_count << ".csv";
+      curr_file.open(full_file.str());
+      curr_file << vnuav::get_header() << "," << DaqUav::get_header() << "\n";
+    }
+    run_count++;
   }
   end_time = chrono::high_resolution_clock::now();
-  process_time = chrono::duration_cast<chrono::microseconds>(end_time - curr_time).count();
+  process_time = (chrono::duration_cast<chrono::microseconds>(end_time - curr_time).count())/test_count;
+
   if(process_time*1000>sample_period.tv_nsec){
     cout << "WARNING: cannot garuntee capture of all data at this sample rate. (too high)" << endl;
     sample_period.tv_nsec = 0;
@@ -173,6 +182,7 @@ void* parallelLog(void* filename) {
   else { 
     sample_period.tv_nsec = sample_period.tv_nsec- process_time*1000;
   }
+
 
   while(keep_logging) {
     nanosleep(&sample_period, (struct timespec *)NULL);
