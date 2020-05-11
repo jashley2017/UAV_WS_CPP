@@ -124,17 +124,13 @@ void* parallelLog(void* filename) {
   long line_count = 0;
   int file_count = 0;
   // This part is difficulty of passing a string as a pointer. Please ignore
-  std::ostringstream full_file;
+  ostringstream full_file;
   full_file << *(static_cast<string*>(filename)) << file_count << ".csv";
+
+  // open file and buffer
   ofstream curr_file; 
   curr_file.open(full_file.str());
-  
-  curr_file << "TIME," << vnuav::get_header() << "," << DaqUav::get_header() << "\n";
   stringstream buffer_str;
-
-  struct timespec sample_period = {0};
-  sample_period.tv_sec = 0;
-  sample_period.tv_nsec = min_per;
 
   // setup time variables
   chrono::high_resolution_clock::time_point curr_time;
@@ -143,10 +139,7 @@ void* parallelLog(void* filename) {
   long long process_time;
 
   // let all sensors start up and then do an initial run to check how much time processing takes
-  // TODO: the first couple runs take longer than the rest because of caching, sample multiple runs instead
-
-  
-  usleep(100);
+  usleep(1000);
   curr_time = chrono::high_resolution_clock::now();
 
   const int test_count = 100;
@@ -175,6 +168,11 @@ void* parallelLog(void* filename) {
   end_time = chrono::high_resolution_clock::now();
   process_time = (chrono::duration_cast<chrono::microseconds>(end_time - curr_time).count())/test_count;
 
+  // setup the time delay needed and adjust for processing time
+  struct timespec sample_period = {0};
+  sample_period.tv_sec = 0;
+  sample_period.tv_nsec = min_per;
+
   if(process_time*1000>sample_period.tv_nsec){
     cout << "WARNING: cannot garuntee capture of all data at this sample rate. (too high)" << endl;
     sample_period.tv_nsec = 0;
@@ -183,6 +181,10 @@ void* parallelLog(void* filename) {
     sample_period.tv_nsec = sample_period.tv_nsec- process_time*1000;
   }
 
+  // start main loop
+  curr_file.close();
+  curr_file.open(full_file.str(), ofstream::out | ofstream::trunc);
+  curr_file << "TIME," << vnuav::get_header() << "," << DaqUav::get_header() << "\n";
 
   while(keep_logging) {
     nanosleep(&sample_period, (struct timespec *)NULL);
