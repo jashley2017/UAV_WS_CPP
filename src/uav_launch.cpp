@@ -23,6 +23,7 @@ auto start_time = chrono::high_resolution_clock::now();
 long long min_per = 100000; // 100 us 
 volatile bool keep_logging = true;
 DaqUav *daq; 
+VecNavUav *vecnav;
 
 int main(int argc, char *argv[]){
 
@@ -62,7 +63,9 @@ int main(int argc, char *argv[]){
   }
 
   // Start Sensors
-  vnuav::start_vs(vec_baud, vec_port, vec_rate);
+
+  vecnav = new VecNavUav(vec_baud, vec_port, vec_rate);
+  vecnav->start_vs();
   daq = new DaqUav(low_chan, high_chan, dac_rate); 
   daq->start_daq();
 
@@ -91,7 +94,7 @@ int main(int argc, char *argv[]){
 
   // Stop Sensors
   daq->stop_daq();
-  vnuav::stop_vs();
+  vecnav->stop_vs();
 
   return 0;
 }
@@ -161,7 +164,7 @@ void* parallelLog(void* filename) {
       full_file.str("");
       full_file << *(static_cast<string*>(filename)) << file_count << ".csv";
       curr_file.open(full_file.str());
-      curr_file << vnuav::get_header() << "," << DaqUav::get_header() << "\n";
+      curr_file << VecNavUav::get_header() << "," << DaqUav::get_header() << "\n";
     }
     run_count++;
   }
@@ -184,7 +187,7 @@ void* parallelLog(void* filename) {
   // start main loop
   curr_file.close();
   curr_file.open(full_file.str(), ofstream::out | ofstream::trunc);
-  curr_file << "TIME," << vnuav::get_header() << "," << DaqUav::get_header() << "\n";
+  curr_file << "TIME," << VecNavUav::get_header() << "," << DaqUav::get_header() << "\n";
 
   while(keep_logging) {
     nanosleep(&sample_period, (struct timespec *)NULL);
@@ -205,7 +208,7 @@ void* parallelLog(void* filename) {
       full_file.str("");
       full_file << *(static_cast<string*>(filename)) << file_count << ".csv";
       curr_file.open(full_file.str());
-      curr_file << "TIME," << vnuav::get_header() << "," << DaqUav::get_header() << "\n";
+      curr_file << "TIME," << VecNavUav::get_header() << "," << DaqUav::get_header() << "\n";
     }
   }
   curr_file.close();
@@ -228,8 +231,8 @@ void log_adc_data(stringstream& curr_file) {
 // retrieves buffer from vectornav
 //
 void log_vec_data(stringstream& curr_file) {
-    vnuav::lock_vec_data();
-    char* vec_data_cstr = vnuav::get_data();
+    vecnav->lock_vec_data();
+    char* vec_data_cstr = vecnav->get_data();
     curr_file << vec_data_cstr;
-    vnuav::unlock_vec_data();
+    vecnav->unlock_vec_data();
 }
