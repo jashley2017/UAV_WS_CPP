@@ -8,6 +8,7 @@
 // #include <mutex>
 #include <pthread.h>
 #include <unistd.h>
+#include <cstring>
 
 // Include this header file to get access to VectorNav sensors.
 #include "vn/sensors.h"
@@ -26,22 +27,17 @@ using namespace vn::xplat;
 
 #if _WIN32
 
-const float M_PI=3.14159;
+float M_PI=3.14159;
 
 #endif
 
-
 namespace vnuav { 
 
-  /*
   const char* VN_HEADER = "IMU_ORIENTATION_X,IMU_ORIENTATION_Y,IMU_ORIENTATION_Z,IMU_ORIENTATION_W,IMU_ANGULAR_VELOCITY_X,IMU_ANGULAR_VELOCITY_Y,IMU_ANGULAR_VELOCITY_Z,IMU_LINEAR_ACCELERATION_X,IMU_LINEAR_ACCELERATION_Y,IMU_LINEAR_ACCELERATION_Z,MAG_MAGNETIC_FIELD_X,MAG_MAGNETIC_FIELD_Y,MAG_MAGNETIC_FIELD_Z,GPS_LATITUDE,GPS_LONGITUDE,GPS_ALTITUDE,ODOM_POSITION_X,ODOM_POSITION_Y,ODOM_POSITION_Z,ODOM_TWIST_LINEAR_X,ODOM_TWIST_LINEAR_Y,ODOM_TWIST_LINEAR_Z,ODOM_TWIST_ANGULAR_X,ODOM_TWIST_ANGULAR_Y,ODOM_TWIST_ANGULAR_Z,ODOM_ORIENTATION_X,ODOM_ORIENTATION_Y,ODOM_ORIENTATION_Z,TEMP_TEMPERATURE,BAROM_FLUID_PRESSURE";
   const char* VN_FORMAT = "%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f";
-  const int BUFSIZE = sizeof(float)*30+29; //this is the bytesize of the format string with all floats + , 
-  */
-  const char* VN_HEADER = "BINARY PACKET";
-  const size_t PACKET_SIZE = 24; // size of binary packet in bytes
+  const size_t FORMAT_LEN = 200;
 
-  char * vec_data_cstr; 
+  char vec_data_cstr[FORMAT_LEN] = {0}; 
   VectorNavData vec_data;
   pthread_mutex_t vec_data_mut;
   VnSensor vs;
@@ -150,6 +146,38 @@ namespace vnuav {
         vec_data.temp.temperature =0;
         vec_data.barom.fluid_pressure =0;
 
+	      snprintf(vec_data_cstr, FORMAT_LEN, VN_FORMAT, 
+		vec_data.imu.orientation.x ,
+		vec_data.imu.orientation.y ,
+		vec_data.imu.orientation.z ,
+		vec_data.imu.orientation.w ,
+		vec_data.imu.angular_velocity.x ,
+		vec_data.imu.angular_velocity.y ,
+		vec_data.imu.angular_velocity.z ,
+		vec_data.imu.linear_acceleration.x ,
+		vec_data.imu.linear_acceleration.y ,
+		vec_data.imu.linear_acceleration.z ,
+		vec_data.mag.magnetic_field.x ,
+		vec_data.mag.magnetic_field.y ,
+		vec_data.mag.magnetic_field.z ,
+		vec_data.gps.latitude ,
+		vec_data.gps.longitude ,
+		vec_data.gps.altitude ,
+		vec_data.odom.position.x ,
+		vec_data.odom.position.y,
+		vec_data.odom.position.z,
+		vec_data.odom.twist_linear.x ,
+		vec_data.odom.twist_linear.y ,
+		vec_data.odom.twist_linear.z ,
+		vec_data.odom.twist_angular.x ,
+		vec_data.odom.twist_angular.y ,
+		vec_data.odom.twist_angular.z ,
+		vec_data.odom.orientation.x ,
+		vec_data.odom.orientation.y ,
+		vec_data.odom.orientation.z ,
+		vec_data.temp.temperature ,
+		vec_data.barom.fluid_pressure );
+
     vs.writeBinaryOutput1(bor);
 
     UserData user_data;
@@ -172,12 +200,6 @@ namespace vnuav {
   //
   void BinaryAsyncMessageReceived(void* userData, Packet& p, size_t index)
   {
-    lock_vec_data();
-    vec_data_cstr = const_cast<char*>(p.datastr().c_str());
-    unlock_vec_data(); 
-
-      /*
-       * These will be done in post processing to save time
       vn::sensors::CompositeData cd = vn::sensors::CompositeData::parse(p);
       UserData user_data = *static_cast<UserData*>(userData);
 
@@ -308,7 +330,7 @@ namespace vnuav {
       }
 
       lock_vec_data();
-      snprintf(vec_data_cstr, BUFSIZE-1, VN_FORMAT, 
+      snprintf(vec_data_cstr, FORMAT_LEN, VN_FORMAT, 
         vec_data.imu.orientation.x ,
         vec_data.imu.orientation.y ,
         vec_data.imu.orientation.z ,
@@ -340,6 +362,5 @@ namespace vnuav {
         vec_data.temp.temperature ,
         vec_data.barom.fluid_pressure );
       unlock_vec_data();
-      */
   }
 }
